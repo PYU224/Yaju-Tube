@@ -1,0 +1,7 @@
+{
+  "name": "Yaju-Tube",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "vue-vite"
+}
