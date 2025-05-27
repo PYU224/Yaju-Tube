@@ -1,2 +1,56 @@
 /* For information on how to create your own theme, please see:
 http://ionicframework.com/docs/theming/ */
+
+:root {
+  /* ライトモード用の変数 */
+  --ion-background-color: #ffffff;
+  --ion-text-color: #000000;
+  /* 他の変数もここに追加 */
+}
+
+[data-theme='dark'] {
+  /* ダークモード用の変数 */
+  --ion-background-color: #121212;
+  --ion-text-color: #ffffff;
+  /* 他の変数もここに追加 */
+}
+
+[data-theme='sepia'] {
+  --ion-background-color: #f4ecd8;
+  --ion-text-color: #5b4636;
+  /* 他のセピアテーマ用の変数 */
+}
+
+[data-theme="grape"] {
+  --ion-background-color: #2e003e;
+  --ion-text-color: #ffffff;
+  --ion-primary-color: #9d4edd;
+}
+
+/* フッター等に色を適用 */
+ion-footer ion-toolbar {
+  --background: var(--ion-background-color);
+}
+ion-label {
+  --background: var(--ion-background-color);
+  --color: var(--ion-text-color) !important;
+}
+ion-select {
+  --background: var(--ion-background-color);
+  --placeholder-color: var(--ion-text-color);
+  --color: var(--ion-text-color);
+}
+ion-toolbar {
+  --background: white;
+}
+ion-title {
+  --color: black;
+}
+ion-searchbar {
+  --text-color: black;
+}
+
+.color-change {
+  --background: var(--ion-background-color);
+  --color: var(--ion-text-color);
+}

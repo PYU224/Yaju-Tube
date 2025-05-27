@@ -1,23 +1,57 @@
+<script setup lang="ts">
+import { useInstanceStore } from '@/stores/instanceStore';
+import {
+  IonPage,
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonContent,
+  IonList,
+  IonItem,
+  IonLabel,
+  IonItemSliding,
+  IonItemOptions,
+  IonItemOption,
+} from '@ionic/vue';
+import { useRouter } from 'vue-router';
+import '../theme/variables.css';
+
+const router = useRouter();
+const instanceStore = useInstanceStore();
+
+const deleteInstance = (url: string) => {
+  instanceStore.removeInstance(url);
+};
+
+const selectInstance = (url: string) => {
+  instanceStore.selectedInstanceUrl = url;
+  router.push('/tabs/tab2');
+};
+</script>
+
+
 <template>
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-title>Tab 1</ion-title>
+        <ion-title>インスタンス一覧</ion-title>
       </ion-toolbar>
     </ion-header>
-    <ion-content :fullscreen="true">
-      <ion-header collapse="condense">
-        <ion-toolbar>
-          <ion-title size="large">Tab 1</ion-title>
-        </ion-toolbar>
-      </ion-header>
-
-      <ExploreContainer name="Tab 1 page" />
+    <ion-content>
+      <ion-list>
+        <ion-item-sliding
+          v-for="instance in instanceStore.instances" :key="instance.url" 
+        >
+          <ion-item button @click="selectInstance(instance.url)">
+            <ion-label>{{ instance.name }}</ion-label>
+          </ion-item>
+          <ion-item-options side="end">
+            <ion-item-option color="danger" @click="deleteInstance(instance.url)">
+              削除
+            </ion-item-option>
+          </ion-item-options>
+        </ion-item-sliding>
+      </ion-list>
     </ion-content>
   </ion-page>
 </template>
-
-<script setup lang="ts">
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue';
-import ExploreContainer from '@/components/ExploreContainer.vue';
-</script>
