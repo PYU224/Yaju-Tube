@@ -4,8 +4,6 @@
 
 <div align="center">
 
-<p><img alt="peertube player app 真夏の夜の淫夢 例のアレ" src="./sample.png" width="320" height="552"></p>
-
 <p>・Github Pages<br>
 <a href="https://pyu224.github.io/Yaju-Tube/">https://pyu224.github.io/Yaju-Tube/</a></p>
 
@@ -18,6 +16,12 @@
 </div>
 
 ## 概要
+<div align="center">
+
+<p><img alt="peertube player app 真夏の夜の淫夢 例のアレ" src="./sample.png" width="320" height="552"></p>
+
+</div>
+
 <p>これはPeertubeの公式アプリが重くて使えなかったので、AIに頼りつつ独力で何かできないかと思って作ってみたPeertubeの動画再生アプリです。</p>
 <p>一応動きますがまだまだ開発途中です。<br>
 主にここのIssueでバグ報告やリクエストを受け付けています。</p>
