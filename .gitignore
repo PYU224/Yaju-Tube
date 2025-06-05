@@ -37,3 +37,6 @@ dist/
 ios/
 android/
 vendor/
+
+!fastlane/metadata/android/
+!fastlane/metadata/android/**/*

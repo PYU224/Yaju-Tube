@@ -1,0 +1,21 @@
+<strong>Yaju-Tube</strong> is a simple open source Android video player that makes it easy to watch Peertube videos.
+
+<strong><font color="#339933">[Features]</font></strong>
+
+* A simple and easy to understand design with no unnecessary elements.
+* You can quickly find the video you are looking for using the search function.
+* Equipped with a function that allows you to add instances and use them separately.
+
+<strong><font color="#339933">[Objective]</font></strong>
+
+The app is designed to provide the fastest possible viewing time for users who want to watch content.<br>
+It acts as a lightweight alternative to the official Peertube app.
+
+<strong><font color="#339933">[Note]</font></strong>
+
+* This app is currently under development, so if you have any bugs or feature requests, please submit them to the Github Issues listed below.
+
+<strong><font color="#339933">[Source]</font></strong>
+
+* GitHub  
+https://github.com/PYU224/Yaju-Tube
