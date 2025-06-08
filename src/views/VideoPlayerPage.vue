@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonFooter } from '@ionic/vue';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent} from '@ionic/vue';
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
@@ -96,16 +96,16 @@ onBeforeUnmount(() => {
   font-size: 1.2rem;
 }
 .iframeWrap {
-  position: relative;
-  padding-bottom: 56.25%;
-  height: 0;
-  overflow: hidden;
-}
-.iframeWrap iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   width: 100%;
   height: 100%;
+}
+.iframeWrap iframe {
+  width: 100%;
+  /* max-width: 640px; 必要に応じて最大幅を設定 */
+  height: auto;
+  aspect-ratio: 16 / 9; /* アスペクト比を維持 */
 }
 </style>

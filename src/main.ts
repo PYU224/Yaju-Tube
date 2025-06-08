@@ -24,6 +24,8 @@ import '@ionic/vue/css/display.css';
 /* Theme variables */
 import './theme/variables.css';
 
+import i18n from './i18n'
+
 const pinia = createPinia();
 
 const app = createApp(App)
@@ -32,6 +34,7 @@ const app = createApp(App)
 pinia.use(piniaPluginPersistedstate);
 app.use(pinia);
 app.use(IonicVue, { innerHTMLTemplatesEnabled: true });
+app.use(i18n)
 
 import { useSettingsStore } from '@/stores/settingsStore';
 const settingsStore = useSettingsStore();

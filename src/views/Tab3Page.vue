@@ -1,32 +1,35 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useInstanceStore } from '@/stores/instanceStore';
 import ModalComponent from '@/components/ModalComponent.vue';
-import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import '../theme/variables.css';
 
-const route = useRoute();
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonSelect, IonSelectOption, IonToggle, IonAlert } from '@ionic/vue';
+
+const { t } = useI18n();
+
 const settingsStore = useSettingsStore();
 const instanceStore = useInstanceStore();
 
-const instanceUrl = route.params.instanceUrl as string || settingsStore.defaultInstanceUrl;
-
 const isModalOpen = ref(false);
 const modalMode = ref<'add' | 'default'>('add');
-const modalTitle = ref('インスタンスを追加');
+const modalTitle = computed(() => t(`modal.title.${modalMode.value}`));
 
 const openModal = (mode: 'add' | 'default') => {
   modalMode.value = mode;
-  modalTitle.value = mode === 'add' ? 'インスタンスを追加' : 'デフォルトインスタンスURLを設定';
   isModalOpen.value = true;
 };
 
-const handleSave = (data: any) => {
+const handleSave = (data: { name?: string; url: string }) => {
   if (modalMode.value === 'add') {
-    instanceStore.addInstance(data);
+    const name = data.name?.trim() || data.url.trim();
+    const url = data.url.trim().replace(/^https?:\/\//, '');
+    instanceStore.addInstance({ name, url });
   } else if (modalMode.value === 'default') {
-    settingsStore.setDefaultInstanceUrl(data);
+    const url = data.url.trim().replace(/^https?:\/\//, '');
+    settingsStore.setDefaultInstanceUrl(url);
   }
 };
 
@@ -39,13 +42,13 @@ onMounted(() => {
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-title>設定</ion-title>
+        <ion-title>{{ $t('menu.settings') }}</ion-title>
       </ion-toolbar>
     </ion-header>
     <ion-content>
       <ion-list>
         <ion-item>
-          <ion-label>表示件数</ion-label>
+          <ion-label>{{ $t('menu.setItems') }}</ion-label>
           <ion-select v-model="settingsStore.itemsPerPage" interface="popover">
             <ion-select-option :value="10">10</ion-select-option>
             <ion-select-option :value="20">20</ion-select-option>
@@ -53,33 +56,42 @@ onMounted(() => {
           </ion-select>
         </ion-item>
         <ion-item>
-          <ion-label>テーマ</ion-label>
-            <ion-select v-model="settingsStore.theme" @ionChange="settingsStore.setTheme($event.detail.value)" interface="popover">
+          <ion-label>{{ $t('menu.setThemes') }}</ion-label>
+          <ion-select v-model="settingsStore.theme" @ionChange="settingsStore.setTheme($event.detail.value)" interface="popover">
             <ion-select-option v-for="theme in settingsStore.availableThemes" :key="theme" :value="theme">
               {{ theme }}
             </ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
-          <ion-label>通知</ion-label>
+          <ion-label>{{ $t('menu.setNotification') }}</ion-label>
           <ion-toggle v-model="settingsStore.notificationsEnabled"></ion-toggle>
         </ion-item>
 
-        <ion-item @click="openModal('default')">デフォルトインスタンスURLを設定</ion-item>
-        <ion-item @click="openModal('add')">インスタンスを追加する</ion-item>
+        <ion-item @click="openModal('default')">{{ $t('menu.setDefaultInstance') }}</ion-item>
+        <ion-item @click="openModal('add')">{{ $t('menu.addInstance') }}</ion-item>
+
         <ModalComponent
           :isOpen="isModalOpen"
-          :mode="modalMode"
+          :modalType="modalMode"
           :title="modalTitle"
           @update:isOpen="isModalOpen = $event"
           @save="handleSave"
         />
 
-        <ion-item id="about-alert">このアプリについて</ion-item>
+        <ion-item>
+          <ion-label>{{ $t('menu.setLanguage') }}</ion-label>
+          <ion-select v-model="settingsStore.locale" @ionChange="settingsStore.changeLanguage($event.detail.value)" interface="popover">
+            <ion-select-option value="ja">日本語</ion-select-option>
+            <ion-select-option value="en">English</ion-select-option>
+          </ion-select>
+        </ion-item>
+
+        <ion-item id="about-alert">{{ $t('menu.about') }}</ion-item>
         <ion-alert
           trigger="about-alert"
           header="Yaju-Tube"
-          sub-header="Ver 0.1"
+          sub-header="Ver 0.2"
           message="<p>開発：PYU224</p><p>連絡先一覧：<br>https://linksta.cc/@pyu224 </p><p>ライセンス：GPL-3.0（予定）</p>"
           cssClass="color-change"
         ></ion-alert>
@@ -87,14 +99,3 @@ onMounted(() => {
     </ion-content>
   </ion-page>
 </template>
-
-<script lang="ts">
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonSelect, IonSelectOption, IonToggle, IonAlert } from '@ionic/vue';
-
-const settingsStore = useSettingsStore();
-const isModalOpen = ref(false);
-const newInstanceUrl = ref('');
-
-// instanceUrl を使用して動画一覧を取得・表示する処理を追加
-
-</script>

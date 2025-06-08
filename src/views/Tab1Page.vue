@@ -15,9 +15,12 @@ import {
 } from '@ionic/vue';
 import { useRouter } from 'vue-router';
 import '../theme/variables.css';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
 const instanceStore = useInstanceStore();
+
+const { t } = useI18n();
 
 const deleteInstance = (url: string) => {
   instanceStore.removeInstance(url);
@@ -34,7 +37,7 @@ const selectInstance = (url: string) => {
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-title>インスタンス一覧</ion-title>
+        <ion-title>{{ $t('menu.instanceLists') }}</ion-title>
       </ion-toolbar>
     </ion-header>
     <ion-content>
@@ -47,7 +50,7 @@ const selectInstance = (url: string) => {
           </ion-item>
           <ion-item-options side="end">
             <ion-item-option color="danger" @click="deleteInstance(instance.url)">
-              削除
+              {{ $t('menu.instanceDelete') }}
             </ion-item-option>
           </ion-item-options>
         </ion-item-sliding>

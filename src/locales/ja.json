@@ -1,0 +1,35 @@
+{
+  "menu": {
+    "inputName": "名前",
+    "exampleName": "例: 野獣動画2nd",
+    "inputInstanceName": "インスタンスURLを入力",
+    "exampleUrl": "例: 810video.com",
+    "inputInstanceUrl": "デフォルトインスタンスURLを入力",
+    "inputSave": "保存",
+
+    "instanceLists": "インスタンス一覧",
+    "instanceDelete": "削除",
+
+    "videolist": "動画一覧",
+    "pages": "ページ",
+    "search": "動画を検索",
+    "getVideo": "取得できる動画はありません。",
+    "pageNumber": "ページ番号",
+
+    "settings": "設定",
+    "about": "このアプリについて",
+    "addInstance": "インスタンスを追加する",
+    "mining": "XMRを開発者のために採掘する",
+    "setDefaultInstance": "デフォルトインスタンスURLを設定",
+    "setItems": "表示項目",
+    "setThemes": "テーマ",
+    "setNotification": "通知",
+    "setLanguage": "言語設定"
+  },
+  "modal": {
+    "title": {
+      "add": "インスタンスを追加",
+      "default": "デフォルトインスタンスを設定"
+    }
+  }
+}

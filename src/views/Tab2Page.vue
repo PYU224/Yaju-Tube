@@ -3,10 +3,10 @@
     <!-- ヘッダー: タイトルと検索バー -->
     <ion-header>
       <ion-toolbar>
-        <ion-title>動画一覧</ion-title>
+        <ion-title>{{ $t('menu.videolist') }}</ion-title>
       </ion-toolbar>
       <ion-toolbar>
-        <ion-searchbar v-model="searchQuery" @ionInput="onSearch" show-cancel-button="focus" placeholder="動画を検索" style="font-size: 1.2rem; text-align: center;"></ion-searchbar>
+        <ion-searchbar v-model="searchQuery" @ionInput="onSearch" show-cancel-button="focus" :placeholder="$t('menu.search')" style="font-size: 1.2rem; text-align: center;"></ion-searchbar>
       </ion-toolbar>
     </ion-header>
 
@@ -27,7 +27,7 @@
         </ion-item>
       </ion-list>
       <div v-else class="notion" style="white-space: pre-line;">
-        {{ errorMessage || '取得できる動画はありません。' }}
+        {{ errorMessage ||  $t('menu.getVideo')  }}
       </div>
     </ion-content>
 
@@ -41,10 +41,10 @@
             v-model.number="inputPage"
             :min="1"
             :max="totalPages"
-            placeholder="ページ番号"
+            :placeholder="$t('menu.pageNumber')"
             style="width: 80px; margin: 0 1rem; font-size: 1.2rem; text-align: center;"
           ></ion-input>
-          <ion-button @click="goToPage">ページ</ion-button>
+          <ion-button @click="goToPage">{{ $t('menu.pages') }}</ion-button>
           <ion-button @click="nextPage" :disabled="currentPage === totalPages">＞</ion-button>
         </div>
       </ion-toolbar>
@@ -59,6 +59,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useInstanceStore } from '@/stores/instanceStore';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import '../theme/variables.css';
 
 // 動画再生部分
@@ -69,6 +70,8 @@ const goToVideo = (videoId: string) => {
 
 const settingsStore = useSettingsStore();
 const instanceStore = useInstanceStore();
+
+const { t } = useI18n();
 
 const count = computed(() => settingsStore.itemsPerPage);
 const videos = ref<any[]>([]);

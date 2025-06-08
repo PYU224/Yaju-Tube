@@ -1,0 +1,35 @@
+{
+  "menu": {
+    "inputName": "Name",
+    "exampleName": "Example: YajuVideo-2nd",
+    "inputInstanceName": "Input Instance Name",
+    "exampleUrl": "Example: 810video.com",
+    "inputInstanceUrl": "Input Default Instance URL",
+    "inputSave": "Save",
+
+    "instanceLists": "Instances",
+    "instanceDelete": "Delete",
+
+    "videolist": "Video List",
+    "pages": "Page",
+    "search": "Search Videos",
+    "getVideo": "Available no Videos.",
+    "pageNumber": "Page Number",
+
+    "settings": "Settings",
+    "about": "About this app",
+    "addInstance": "Add Instance",
+    "mining": "Mining XMR for Developers",
+    "setDefaultInstance": "Set Default Instance URL",
+    "setItems": "Items per page",
+    "setThemes": "Theme",
+    "setNotification": "Notifications",
+    "setLanguage": "Language Settings"
+  },
+  "modal": {
+    "title": {
+      "add": "Add Instance",
+      "default": "Set Default Instance"
+    }
+  }
+}

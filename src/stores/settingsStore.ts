@@ -1,89 +1,44 @@
-// stores/settingsStore.ts
-import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+// src/stores/settingsStore.ts
+import { defineStore } from 'pinia'
+import { ref, watch } from 'vue'
+import i18n from '@/i18n'
 
-export const useSettingsStore = defineStore('settings', {
-  state: () => ({
-    theme: 'light',
-    availableThemes: ['light', 'dark', 'sepia', 'grape'],
-    language: 'ja',
-    notificationsEnabled: true,
-    itemsPerPage: 20,
-    defaultInstanceUrl: '810video.com', // 追加
+export const useSettingsStore = defineStore('settings', () => {
+  const theme = ref('light')
+  const availableThemes = ['light', 'dark', 'sepia', 'grape']
+  const notificationsEnabled = ref(true)
+  const itemsPerPage = ref(20)
+  const defaultInstanceUrl = ref('810video.com')
+  const locale = ref('ja')
 
-    instances: [] as string[],
-  }),
-  actions: {
-    setTheme(newTheme: string) {
-      this.theme = newTheme;
-      document.body.setAttribute('data-theme', newTheme);
-    },
-    setLanguage(newLanguage: string) {
-      this.language = newLanguage;
-    },
-    toggleNotifications() {
-      this.notificationsEnabled = !this.notificationsEnabled;
-    },
-    setItemsPerPage(newItemsPerPage: number) {
-      this.itemsPerPage = newItemsPerPage;
-    },
+  const setTheme = (newTheme: string) => {
+    theme.value = newTheme
+    document.body.setAttribute('data-theme', newTheme)
+  }
 
-    setDefaultInstanceUrl(url: string) {
-      const normalizedUrl = url.trim().replace(/^https?:\/\//, '');
-      this.defaultInstanceUrl = normalizedUrl;
-      const instanceStore = useInstanceStore();
-      if (!instanceStore.instances.some(instance => instance.url === normalizedUrl)) {
-        instanceStore.addInstance({ name: normalizedUrl, url: normalizedUrl });
-      }
-    },
-    addInstance(url: string) {
-      const normalizedUrl = url.trim().replace(/^https?:\/\//, '');
-      if (!this.instances.includes(normalizedUrl)) {
-        this.instances.push(normalizedUrl);
-      }
-    },
-    removeInstance(url: string) {
-      this.instances = this.instances.filter(instance => instance !== url);
-    },
-  },
-  persist: true,
-});
+  const changeLanguage = (newLocale: string) => {
+    locale.value = newLocale
+    i18n.global.locale.value = newLocale
+    localStorage.setItem('locale', newLocale)
+  }
 
-export const useInstanceStore = defineStore('instanceStore', () => {
-  const instances = ref<{ name: string; url: string }[]>([]);
-
-  // ローカルストレージからインスタンスを読み込む
-  const loadInstances = () => {
-    const saved = localStorage.getItem('instances');
-    if (saved) {
-      instances.value = JSON.parse(saved);
-    }
-  };
-
-  // インスタンスを追加する
-  const addInstance = (instance: { name: string; url: string }) => {
-    // 重複チェック
-    if (!instances.value.some(i => i.url === instance.url)) {
-      instances.value.push(instance);
-    }
-  };
-
-  // インスタンスを削除する
-  const removeInstance = (url: string) => {
-    instances.value = instances.value.filter(i => i.url !== url);
-  };
-
-  // インスタンスの変更をローカルストレージに保存
-  watch(instances, (newVal) => {
-    localStorage.setItem('instances', JSON.stringify(newVal));
-  }, { deep: true });
-
-  // 初期化時にインスタンスを読み込む
-  loadInstances();
+  // 初期化時にローカルストレージから言語設定を読み込む
+  const savedLocale = localStorage.getItem('locale')
+  if (savedLocale) {
+    locale.value = savedLocale
+    i18n.global.locale.value = savedLocale
+  }
 
   return {
-    instances,
-    addInstance,
-    removeInstance,
-  };
-});
+    theme,
+    availableThemes,
+    notificationsEnabled,
+    itemsPerPage,
+    defaultInstanceUrl,
+    locale,
+    setTheme,
+    changeLanguage
+  }
+}, {
+  persist: true
+})

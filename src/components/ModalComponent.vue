@@ -1,68 +1,77 @@
 <template>
-  <ion-modal :is-open="isOpen" @did-dismiss="closeModal">
+  <ion-modal :is-open="isOpen" @didDismiss="closeModal">
     <ion-header>
       <ion-toolbar>
         <ion-title>{{ title }}</ion-title>
         <ion-buttons slot="end">
-          <ion-button @click="closeModal">閉じる</ion-button>
+          <ion-button @click="closeModal">Close</ion-button>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
-    <ion-content>
-      <ion-list>
-        <ion-item v-if="mode === 'add'">
-          <ion-label position="stacked">名前</ion-label>
-          <ion-input v-model="name" placeholder="例: 野獣動画2nd"></ion-input>
-        </ion-item>
-        <ion-item>
-          <ion-label position="stacked">URL</ion-label>
-          <ion-input v-model="url" placeholder="例: 810video.com"></ion-input>
-        </ion-item>
-      </ion-list>
-      <ion-button expand="full" @click="handleSave">保存</ion-button>
+    <ion-content class="ion-padding">
+       <ion-item v-if="modalType === 'add'">
+         <ion-label position="stacked">{{ $t('menu.inputName') }}</ion-label>
+        <ion-input v-model="inputName" :placeholder="$t('menu.exampleName')"></ion-input>
+      </ion-item>
+      <ion-item>
+        <ion-label position="stacked">{{ modalType === 'add' ? $t('menu.inputInstanceName') : $t('menu.inputInstanceUrl') }}</ion-label>
+        <ion-input v-model="inputValue" :placeholder="$t('menu.exampleUrl')"></ion-input>
+      </ion-item>
+      <ion-button expand="block" @click="save">{{ $t('menu.inputSave') }}</ion-button>
     </ion-content>
   </ion-modal>
 </template>
 
 <script setup lang="ts">
-import {
-  IonModal,
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonButtons,
-  IonButton,
-  IonContent,
-  IonList,
-  IonItem,
-  IonLabel,
-  IonInput,
-} from '@ionic/vue';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { IonHeader, IonToolbar, IonTitle, IonContent, IonItem, IonLabel, IonButton, IonButtons, IonInput, IonModal } from '@ionic/vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   isOpen: boolean;
-  mode: 'add' | 'default';
+  modalType: 'add' | 'default';
   title: string;
 }>();
-const emit = defineEmits(['update:isOpen', 'save']);
 
-const name = ref('');
-const url = ref('');
+const emit = defineEmits<{
+  (e: 'update:isOpen', value: boolean): void;
+  (e: 'save', value: { name?: string; url: string }): void;
+}>();
 
-const handleSave = () => {
-  if (url.value.trim()) {
-    const payload = props.mode === 'add'
-      ? { name: name.value.trim(), url: url.value.trim() }
-      : url.value.trim();
-    emit('save', payload);
-    name.value = '';
-    url.value = '';
-    emit('update:isOpen', false);
+const inputName = ref('');
+const inputValue = ref('');
+
+watch(
+  () => props.isOpen,
+  (newVal) => {
+    if (newVal) {
+      inputName.value = '';
+      inputValue.value = '';
+    }
   }
-};
+);
 
 const closeModal = () => {
   emit('update:isOpen', false);
+};
+
+const save = () => {
+  // 入力されたURLの前後の空白を削除し、末尾のスラッシュを取り除く
+  const normalizedUrl = inputValue.value.trim().replace(/\/+$/, '');
+
+  if (props.modalType === 'add') {
+    emit('save', {
+      name: inputName.value.trim(),
+      url: normalizedUrl,
+    });
+  } else {
+    emit('save', {
+      url: normalizedUrl,
+    });
+  }
+
+  closeModal();
 };
 </script>
