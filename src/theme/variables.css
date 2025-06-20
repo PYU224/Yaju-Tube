@@ -30,6 +30,7 @@ http://ionicframework.com/docs/theming/ */
 /* フッター等に色を適用 */
 ion-footer ion-toolbar {
   --background: var(--ion-background-color);
+  --color: var(--ion-text-color);
 }
 ion-label {
   --background: var(--ion-background-color);
@@ -48,6 +49,12 @@ ion-title {
 }
 ion-searchbar {
   --text-color: black;
+  --color: black !important;
+}
+
+/* モーダル画面 */
+ion-modal {
+  --ion-text: var(--ion-text-color);
 }
 
 .color-change {

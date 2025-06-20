@@ -24,12 +24,27 @@
     "setItems": "表示項目",
     "setThemes": "テーマ",
     "setNotification": "通知",
-    "setLanguage": "言語設定"
+    "setLanguage": "言語設定",
+
+    "getVideoInfo": "動画情報を取得中...",
+    "getLoading": "読み込み中..."
   },
   "modal": {
     "title": {
       "add": "インスタンスを追加",
       "default": "デフォルトインスタンスを設定"
     }
+  },
+  "sort": {
+    "select": "並び替え",
+    "newest": "新しい順",
+    "views_desc": "閲覧数順",
+    "hot": "流行順",
+    "likes_desc": "いいね順"
+  },
+  "filter": {
+    "all": "全動画",
+    "local": "ローカルのみ",
+    "controls": "検索と並び替え"
   }
 }

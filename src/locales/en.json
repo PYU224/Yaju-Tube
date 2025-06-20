@@ -24,12 +24,27 @@
     "setItems": "Items per page",
     "setThemes": "Theme",
     "setNotification": "Notifications",
-    "setLanguage": "Language Settings"
+    "setLanguage": "Language Settings",
+
+    "getVideoInfo": "Getting video information...",
+    "getLoading": "Now Loading..."
   },
   "modal": {
     "title": {
       "add": "Add Instance",
       "default": "Set Default Instance"
     }
+  },
+  "sort": {
+    "select": "Sort",
+    "newest": "Newest",
+    "views_desc": "Views",
+    "hot": "Hot",
+    "likes_desc": "Likes"
+  },
+  "filter": {
+    "all": "All",
+    "local": "Local",
+    "controls": "Search&Sort"
   }
 }

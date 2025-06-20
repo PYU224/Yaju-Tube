@@ -42,13 +42,15 @@ document.body.setAttribute('data-theme', settingsStore.theme);
 
 router.afterEach(() => {
   nextTick(() => {
-    const activeElement = document.activeElement as HTMLElement;
-    if (activeElement && typeof activeElement.blur === 'function') {
-      activeElement.blur();
+    try {
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.blur) active.blur();
+      document.body.tabIndex = 0;
+      document.body.focus();
+      document.body.removeAttribute('tabindex');
+    } catch (e) {
+      console.error('afterEach の DOM 操作で例外:', e);
     }
-    document.body.tabIndex = 0;
-    document.body.focus();
-    document.body.removeAttribute('tabindex');
   });
 });
 

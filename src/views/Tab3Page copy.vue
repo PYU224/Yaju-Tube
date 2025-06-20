@@ -89,6 +89,15 @@ onMounted(() => {
           </ion-select>
         </ion-item>
 
+      <ion-item>
+        <ion-label>{{ $t('menu.mining') }}</ion-label>
+        <ion-select v-model="store.threads">
+          <ion-select-option :value="0"><ion-label>OFF</ion-label></ion-select-option>
+          <ion-select-option :value="1"><ion-label>1 Core using</ion-label></ion-select-option>
+          <ion-select-option :value="2"><ion-label>2 Cores using</ion-label></ion-select-option>
+        </ion-select>
+      </ion-item>
+
         <ion-item id="about-alert">{{ $t('menu.about') }}</ion-item>
         <ion-alert
           trigger="about-alert"
