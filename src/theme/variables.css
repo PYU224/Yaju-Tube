@@ -20,6 +20,11 @@ http://ionicframework.com/docs/theming/ */
   --color-selected: #FFFFFF;
   --background: var(--ion-background-color);
 }
+[data-theme='yajuu'] ion-tab-bar {
+  --color: #CCCCCC;
+  --color-selected: #FFFFFF;
+  --background: var(--ion-background-color);
+}
 
 [data-theme='dark'] {
   /* ダークモード用の変数 */
@@ -30,7 +35,8 @@ http://ionicframework.com/docs/theming/ */
 }
 
 [data-theme='sepia'] {
-  --ion-text-color: #5b4636;
+  --ion-background-color: #ffdacc;
+  --ion-text-color: #622d18;
   --video-outline-color: lightgrey;
   /* 他のセピアテーマ用の変数 */
 }
@@ -40,6 +46,12 @@ http://ionicframework.com/docs/theming/ */
   --ion-text-color: #ffffff;
   --ion-primary-color: #9d4edd;
   --video-outline-color: grey;
+}
+
+[data-theme="yajuu"] {
+  --ion-background-color: #662e18;
+  --ion-text-color: #ffdacc;
+  --video-outline-color: #cc5d31;
 }
 
 /* フッター等に色を適用 */
@@ -97,11 +109,17 @@ ion-alert.select-alert .alert-radio-label {
 [data-theme='grape'] ion-card-title, ion-card-content, ion-alert, ion-item, ion-list {
   color: var(--ion-text-color) !important;
 }
+[data-theme='yajuu'] ion-card-title, ion-card-content, ion-alert, ion-item, ion-list {
+  color: var(--ion-text-color) !important;
+}
 /* サブタイトルなどは少し薄い色に */
 [data-theme='dark'] ion-card-subtitle, ion-subtitle {
   color: #CCCCCC !important;
 }
 [data-theme='grape'] ion-card-subtitle, ion-subtitle {
+  color: #CCCCCC !important;
+}
+[data-theme='yajuu'] ion-card-subtitle, ion-subtitle {
   color: #CCCCCC !important;
 }
 

@@ -5,7 +5,7 @@ import i18n from '@/i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
   const theme = ref('light')
-  const availableThemes = ['light', 'dark', 'sepia', 'grape']
+  const availableThemes = ['light', 'dark', 'sepia', 'grape', 'yajuu']
   const notificationsEnabled = ref(true)
   const itemsPerPage = ref(20)
   const defaultInstanceUrl = ref('810video.com')
