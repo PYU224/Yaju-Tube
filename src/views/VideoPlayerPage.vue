@@ -38,9 +38,10 @@ import { PeerTubePlayer } from '@peertube/embed-api';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked'
 import '../theme/variables.css';
-
-// 動画齊瀬画面のの向き設定
+// 動画画面の向き設定
 import { ScreenOrientation } from '@capacitor/screen-orientation';
+
+// ナビゲーションバーのめり込み禁止
 
 const route = useRoute();
 const instanceStore = useInstanceStore();

@@ -5,19 +5,33 @@ http://ionicframework.com/docs/theming/ */
   /* ライトモード用の変数 */
   --ion-background-color: #ffffff;
   --ion-text-color: #000000;
+  --video-outline-color: lightgrey;
   /* 他の変数もここに追加 */
+}
+
+/* ダークモード時にタブアイコンとラベルを白色に */
+[data-theme='dark'] ion-tab-bar {
+  --color: #CCCCCC;
+  --color-selected: #FFFFFF;
+  --background: var(--ion-background-color);
+}
+[data-theme='grape'] ion-tab-bar {
+  --color: #CCCCCC;
+  --color-selected: #FFFFFF;
+  --background: var(--ion-background-color);
 }
 
 [data-theme='dark'] {
   /* ダークモード用の変数 */
   --ion-background-color: #121212;
   --ion-text-color: #ffffff;
+  --video-outline-color: grey;
   /* 他の変数もここに追加 */
 }
 
 [data-theme='sepia'] {
-  --ion-background-color: #f4ecd8;
   --ion-text-color: #5b4636;
+  --video-outline-color: lightgrey;
   /* 他のセピアテーマ用の変数 */
 }
 
@@ -25,10 +39,11 @@ http://ionicframework.com/docs/theming/ */
   --ion-background-color: #2e003e;
   --ion-text-color: #ffffff;
   --ion-primary-color: #9d4edd;
+  --video-outline-color: grey;
 }
 
 /* フッター等に色を適用 */
-ion-footer ion-toolbar {
+ion-footer {
   --background: var(--ion-background-color);
   --color: var(--ion-text-color);
 }
@@ -38,26 +53,80 @@ ion-label {
 }
 ion-select {
   --background: var(--ion-background-color);
-  --placeholder-color: var(--ion-text-color);
-  --color: var(--ion-text-color);
+  --placeholder-color: var(--ion-text-color) !important;
+  --text-color: var(--ion-text-color) !important;
+  --color: var(--ion-text-color) !important;
+}
+ion-select-option {
+  --background: var(--ion-background-color);
+  --text-color: var(--ion-text-color) !important;
+  --color: var(--ion-text-color) !important;
 }
 ion-toolbar {
-  --background: white;
-}
-ion-title {
-  --color: black;
+  --background: var(--ion-background-color) !important;
+  --text-color: var(--ion-text-color);
+  --color: var(--ion-text-color);
 }
 ion-searchbar {
-  --text-color: black;
-  --color: black !important;
+  --text-color: var(--ion-text-color);
+  --color: var(--ion-text-color) !important;
+  --icon-color: var(--ion-text-color) !important;
+  --clear-button-color: var(--ion-text-color) !important;
+  --cancel-button-color: var(--ion-text-color) !important;
+}
+ion-segment-button {
+  --background: var(--ion-background-color);
+  --text-color: var(--ion-text-color);
+  --color: var(--ion-text-color) !important;
+}
+ion-button {
+  --text-color: var(--ion-text-color);
+  --color: var(--ion-text-color) !important;
+}
+on-alert.select-alert .sc-ion-alert-md {
+  color: var(--ion-text-color) !important;
+}
+ion-alert.select-alert .alert-radio-label {
+  color: var(--ion-text-color) !important;
+}
+
+/* テーマ中の特定要素に適用 */
+[data-theme='dark'] ion-card-title, ion-card-content, ion-alert, ion-item, ion-list {
+  color: var(--ion-text-color) !important;
+}
+[data-theme='grape'] ion-card-title, ion-card-content, ion-alert, ion-item, ion-list {
+  color: var(--ion-text-color) !important;
+}
+/* サブタイトルなどは少し薄い色に */
+[data-theme='dark'] ion-card-subtitle, ion-subtitle {
+  color: #CCCCCC !important;
+}
+[data-theme='grape'] ion-card-subtitle, ion-subtitle {
+  color: #CCCCCC !important;
 }
 
 /* モーダル画面 */
 ion-modal {
   --ion-text: var(--ion-text-color);
 }
-
 .color-change {
   --background: var(--ion-background-color);
   --color: var(--ion-text-color);
+}
+
+.custom-alert .alert-wrapper {
+  /* アラート全体の背景色を調整する場合 */
+  --background: var(--ion-background-color);
+}
+/* ヘッダー部分のテキスト色を白くする */
+.custom-alert .alert-wrapper .alert-head h2 {
+  color: var(--ion-text-color) !important;
+}
+/* サブヘッダーの色 */
+.custom-alert .alert-wrapper .alert-sub-head {
+  color: var(--ion-text-color) !important;
+}
+/* メッセージ本文の色を明るくする */
+.custom-alert .alert-wrapper .alert-message {
+  color: var(--ion-text-color) !important;
 }

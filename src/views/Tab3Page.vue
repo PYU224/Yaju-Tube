@@ -93,9 +93,9 @@ onMounted(() => {
         <ion-alert
           trigger="about-alert"
           header="Yaju-Tube"
-          sub-header="Ver 1.0"
+          sub-header="Ver 1.1"
           message="<p>開発：PYU224</p><p>連絡先一覧：<br>https://linksta.cc/@pyu224 </p><p>ライセンス：GPL-3.0（予定）</p>"
-          cssClass="color-change"
+          cssClass="custom-alert"
         ></ion-alert>
       </ion-list>
     </ion-content>

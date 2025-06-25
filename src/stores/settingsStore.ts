@@ -1,6 +1,6 @@
 // src/stores/settingsStore.ts
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import i18n from '@/i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -10,6 +10,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const itemsPerPage = ref(20)
   const defaultInstanceUrl = ref('810video.com')
   const locale = ref('ja')
+  const displayMode = ref<'list' | 'grid'>('list')
 
   const setTheme = (newTheme: string) => {
     theme.value = newTheme
@@ -22,6 +23,10 @@ export const useSettingsStore = defineStore('settings', () => {
     localStorage.setItem('locale', newLocale)
   }
 
+  // 表示設定 リスト方式 or グリッド表示
+  function setDisplayMode(mode: 'list' | 'grid') {
+    displayMode.value = mode
+  }
   // 初期化時にローカルストレージから言語設定を読み込む
   const savedLocale = localStorage.getItem('locale')
   if (savedLocale) {
@@ -37,7 +42,9 @@ export const useSettingsStore = defineStore('settings', () => {
     defaultInstanceUrl,
     locale,
     setTheme,
-    changeLanguage
+    changeLanguage,
+    displayMode,
+    setDisplayMode
   }
 }, {
   persist: true
