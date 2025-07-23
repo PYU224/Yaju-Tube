@@ -86,6 +86,7 @@ onMounted(() => {
           <ion-select v-model="settingsStore.locale" @ionChange="settingsStore.changeLanguage($event.detail.value)" interface="popover">
             <ion-select-option value="ja">日本語</ion-select-option>
             <ion-select-option value="en">English</ion-select-option>
+            <ion-select-option value="de">Deutsch</ion-select-option>
           </ion-select>
         </ion-item>
 
@@ -93,8 +94,8 @@ onMounted(() => {
         <ion-alert
           trigger="about-alert"
           header="Yaju-Tube"
-          sub-header="Ver 1.1"
-          message="<p>開発：PYU224</p><p>連絡先一覧：<br>https://linksta.cc/@pyu224 </p><p>ライセンス：GPL-3.0（予定）</p>"
+          sub-header="Ver 1.2"
+          message="<p>開発：PYU224</p><p>連絡先一覧：<br>https://linksta.cc/@pyu224 </p><p>ライセンス：GPL-3.0</p>"
           cssClass="custom-alert"
         ></ion-alert>
       </ion-list>

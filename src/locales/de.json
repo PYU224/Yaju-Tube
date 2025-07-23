@@ -1,0 +1,46 @@
+{
+  "menu": {
+    "inputName": "Name",
+    "exampleName": "Beispiel: YajuVideo‑2nd",
+    "inputInstanceName": "Name der Instanz",
+    "exampleUrl": "Beispiel: 810video.com",
+    "inputInstanceUrl": "Standard‑Instanz‑URL eingeben",
+    "inputSave": "Einstellungen speichern",
+    "instanceLists": "Instanzliste",
+    "instanceDelete": "Instanz löschen",
+    "videolist": "Videoliste",
+    "pages": "Seite",
+    "search": "Videosuche",
+    "getVideo": "Video nicht gefunden.",
+    "pageNumber": "Seitenzahl",
+    "settings": "Einstellungen",
+    "about": "Über diese App",
+    "addInstance": "Instanz hinzufügen",
+    "mining": "XMR für Entwickler minen",
+    "setDefaultInstance": "Standardinstanz festlegen",
+    "setItems": "Anzahl pro Seite",
+    "setThemes": "Thema",
+    "setNotification": "Benachrichtigungen",
+    "setLanguage": "Spracheinstellungen",
+    "getVideoInfo": "Videoinformationen werden geladen...",
+    "getLoading": "Wird geladen..."
+  },
+  "modal": {
+    "title": {
+      "add": "Instanz hinzufügen",
+      "default": "Standardinstanz festlegen"
+    }
+  },
+  "sort": {
+    "select": "Sortieren",
+    "newest": "Neueste",
+    "views_desc": "Aufrufe",
+    "hot": "Beliebt",
+    "likes_desc": "Gefällt mir"
+  },
+  "filter": {
+    "all": "Alle",
+    "local": "Lokal",
+    "controls": "Suchen und Sortieren"
+  }
+}

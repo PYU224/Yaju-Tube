@@ -148,3 +148,34 @@ ion-modal {
 .custom-alert .alert-wrapper .alert-message {
   color: var(--ion-text-color) !important;
 }
+
+/* iPhone系列のツールバーが崩れるのを防ぐ */
+.responsive-toolbar {
+  --ion-padding-start: 4px;
+  --ion-padding-end: 4px;
+}
+.toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0.5rem;
+}
+.mode-switch {
+  display: flex;
+  gap: 2px;
+}
+@media (max-width: 480px) {
+  .toolbar-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-controls ion-select,
+  .toolbar-controls ion-button,
+  .toolbar-controls ion-segment {
+    width: 100%;
+    max-width: 100%;
+  }
+}

@@ -5,7 +5,7 @@
       <ion-toolbar>
         <ion-title>{{ $t('menu.videolist') }}</ion-title>
       </ion-toolbar>
-      <ion-toolbar>
+      <ion-toolbar class="responsive-toolbar">
         <ion-accordion-group expand="compact">
           <ion-accordion value="controls">
             <ion-item slot="header" button>
@@ -26,6 +26,7 @@
 
               <!-- ソート・表示切替・フィルタ -->
               <ion-toolbar>
+              <div class="toolbar-controls">
                 <ion-select
                   v-model="selectedSort"
                   :placeholder="$t('sort.select')"
@@ -39,6 +40,7 @@
                 </ion-select>
 
                 <!-- 表示モード切替ボタン -->
+                <div class="mode-switch">
                 <ion-button
                   fill="clear"
                   :color="settingsStore.displayMode === 'list' ? 'primary' : 'medium'"
@@ -53,6 +55,7 @@
                 >
                 <ion-icon :icon="grid"></ion-icon>&nbsp;Grid
                 </ion-button>
+                </div>
 
                 <!-- フィルターセグメント -->
                 <ion-segment
@@ -63,6 +66,7 @@
                   <ion-segment-button value="all">{{ $t('filter.all') }}</ion-segment-button>
                   <ion-segment-button value="local">{{ $t('filter.local') }}</ion-segment-button>
                 </ion-segment>
+              </div>
               </ion-toolbar>
             </div>
           </ion-accordion>

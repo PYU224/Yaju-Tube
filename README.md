@@ -55,4 +55,4 @@
 https://linksta.cc/@pyu224
 
 ## ライセンス
-GPL-3.0で考えています。
+GPL-3.0です。
