@@ -58,8 +58,11 @@ const closeModal = () => {
 };
 
 const save = () => {
-  // 入力されたURLの前後の空白を削除し、末尾のスラッシュを取り除く
-  const normalizedUrl = inputValue.value.trim().replace(/\/+$/, '');
+  const normalizedUrl = inputValue.value
+  .trim()
+  .replace(/^https?:\/\//, '') // プロトコル削除
+  .replace(/\/+$/, '') // 末尾スラッシュ削除
+  .replace(/\/\/+/g, '/'); // 連続スラッシュを1つに
 
   if (props.modalType === 'add') {
     emit('save', {

@@ -25,6 +25,37 @@
 <p>これはPeertubeの公式アプリが重くて使えなかったので、AIに頼りつつ独力で何かできないかと思って適当に作ってみたPeertubeの動画再生アプリです。</p>
 <p>一応動きますがまだまだ開発途中です。<br>
 主にここのIssueでバグ報告やリクエストを受け付けています。</p>
+### ソースからのビルド
+
+## ソースからのビルド
+
+### 要件
+- Node.js 16 以上と npm
+- JDK 17 以上
+- Android SDK
+
+### ビルド手順
+```bash
+# リポジトリのクローン
+git clone https://github.com/PYU224/Yaju-Tube.git
+cd Yaju-Tube
+
+# 依存関係のインストール（開発用依存関係も含む）
+npm install
+
+# Web アプリケーションのビルド
+npm run build
+
+# アイコンとスプラッシュ画像の生成
+npx @capacitor/assets generate
+
+# Capacitor との同期
+npx cap sync android
+
+# Android APK のビルド
+cd android
+./gradlew assembleRelease
+```
 
 ## ロードマップ
 まずは安定して動くようにしたいです。<br>

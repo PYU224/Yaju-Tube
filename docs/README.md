@@ -25,6 +25,28 @@
 <p>これはPeertubeの公式アプリが重くて使えなかったので、AIに頼りつつ独力で何かできないかと思って適当に作ってみたPeertubeの動画再生アプリです。</p>
 <p>一応動きますがまだまだ開発途中です。<br>
 主にここのIssueでバグ報告やリクエストを受け付けています。</p>
+### ソースからのビルド
+
+#### 要件
+- Node.js 16 以上と npm
+- JDK 11 以上
+- Android SDK
+
+#### ビルド手順
+```bash
+# 依存関係のインストール
+npm install
+
+# Web アプリのビルド
+npm run build
+
+# Capacitor との同期
+npx cap sync android
+
+# Android APK のビルド
+cd android
+./gradlew assembleRelease
+```
 
 ## ロードマップ
 まずは安定して動くようにしたいです。<br>
@@ -55,4 +77,4 @@
 https://linksta.cc/@pyu224
 
 ## ライセンス
-GPL-3.0で考えています。
+GPL-3.0です。

@@ -41,20 +41,22 @@
 
                 <!-- 表示モード切替ボタン -->
                 <div class="mode-switch">
-                <ion-button
-                  fill="clear"
-                  :color="settingsStore.displayMode === 'list' ? 'primary' : 'medium'"
-                  @click="settingsStore.setDisplayMode('list')"
-                >                
-                <ion-icon :icon="list"></ion-icon>&nbsp;List
-                </ion-button>
-                <ion-button
-                  fill="clear"
-                  :color="settingsStore.displayMode === 'grid' ? 'primary' : 'medium'"
-                  @click="settingsStore.setDisplayMode('grid')"
-                >
-                <ion-icon :icon="grid"></ion-icon>&nbsp;Grid
-                </ion-button>
+                  <ion-button
+                    fill="clear"
+                    :color="settingsStore.displayMode === 'list' ? 'primary' : 'medium'"
+                    @click="settingsStore.setDisplayMode('list')"
+                    :aria-label="$t('aria.switchToList')"
+                  >                
+                    <ion-icon :icon="list"></ion-icon>&nbsp;List
+                  </ion-button>
+                  <ion-button
+                    fill="clear"
+                    :color="settingsStore.displayMode === 'grid' ? 'primary' : 'medium'"
+                    @click="settingsStore.setDisplayMode('grid')"
+                    :aria-label="$t('aria.switchToGrid')"
+                  >
+                    <ion-icon :icon="grid"></ion-icon>&nbsp;Grid
+                  </ion-button>
                 </div>
 
                 <!-- フィルターセグメント -->
@@ -88,6 +90,8 @@
             <ion-thumbnail slot="start">
               <img
                 :src="getThumbnailUrl(video.thumbnailPath)"
+                :alt="video.name"
+                loading="lazy"
                 @error="onImageError"
               />
             </ion-thumbnail>
@@ -109,7 +113,12 @@
             @click="goToVideo(video.uuid)"
           >
             <ion-card>
-              <img :src="getThumbnailUrl(video.thumbnailPath)" />
+              <img 
+                :src="getThumbnailUrl(video.thumbnailPath)"
+                :alt="video.name"
+                loading="lazy"
+                @error="onImageError"
+              />
               <ion-card-header>
                 <ion-card-title>{{ video.name }}</ion-card-title>
                 <ion-card-subtitle>{{ video.channel.name }}</ion-card-subtitle>
@@ -129,25 +138,43 @@
       </div>
     </ion-content>
 
-    <!-- ページネーション -->
-    <ion-footer>
-      <ion-toolbar>
-        <div class="pagination-controls">
-          <ion-button @click="prevPage" :disabled="currentPage === 1">＜</ion-button>
-          <ion-input
-            type="number"
-            v-model.number="inputPage"
-            :min="1"
-            :max="totalPages"
-            :placeholder="$t('menu.pageNumber')"
-            style="width: 80px; margin: 0 1rem; font-size: 1.2rem; text-align: center;"
-          ></ion-input>
-          <ion-button @click="goToPage">{{ $t('menu.pages') }}</ion-button>
-          <ion-button @click="nextPage" :disabled="currentPage === totalPages">＞</ion-button>
-        </div>
-      </ion-toolbar>
-    </ion-footer>
-  </ion-page>
+<!-- ページネーション -->
+<ion-footer>
+  <ion-toolbar>
+    <div class="pagination-controls">
+      <ion-button 
+        @click="prevPage" 
+        :disabled="currentPage === 1"
+        :aria-label="$t('aria.prevPage')"
+      >
+        ＜
+      </ion-button>
+      <ion-input
+        type="number"
+        v-model.number="inputPage"
+        :min="1"
+        :max="totalPages"
+        :placeholder="$t('menu.pageNumber')"
+        :aria-label="$t('aria.pageNumberInput')"
+        style="width: 80px; margin: 0 1rem; font-size: 1.2rem; text-align: center;"
+      ></ion-input>
+      <ion-button 
+        @click="goToPage"
+        :aria-label="$t('aria.goToPage')"
+      >
+        {{ $t('menu.pages') }}
+      </ion-button>
+      <ion-button 
+        @click="nextPage" 
+        :disabled="currentPage === totalPages"
+        :aria-label="$t('aria.nextPage')"
+      >
+        ＞
+      </ion-button>
+    </div>
+  </ion-toolbar>
+</ion-footer>
+</ion-page>
 </template>
 
 <script setup lang="ts">
@@ -203,18 +230,15 @@ const onSortChange = () => refresh();
 const onFilterChange = () => refresh();
 
 const onImageError = (event: Event) => {
-  (event.target as HTMLImageElement).src = '/placeholder.png';
+  const img = event.target as HTMLImageElement;
+  img.src = '/placeholder.png';
+  img.alt = t('aria.thumbnailNotAvailable'); // $t ではなく t を使う
 };
 
 const getThumbnailUrl = (path: string) =>
   `https://${instanceStore.selectedInstanceUrl}${path}`;
 
-async function loadVideos(
-  page: number,
-  query = '',
-  sort = selectedSort.value,
-  filter = filterMode.value
-) {
+async function loadVideos(page: number, query = '', sort = selectedSort.value, filter = filterMode.value) {
   try {
     const start = (page - 1) * count.value;
     const params: any = { sort, start, count: count.value };
@@ -223,20 +247,31 @@ async function loadVideos(
 
     const res = await API.get(
       `https://${instanceStore.selectedInstanceUrl}/api/v1/videos`,
-      { params }
+      { params, timeout: 10000 }
     );
-    videos.value = res.data.data;
-    totalPages.value = Math.ceil(res.data.total / count.value);
+    
+    videos.value = res.data.data || [];
+    totalPages.value = Math.ceil((res.data.total || 0) / count.value);
     currentPage.value = inputPage.value = page;
     errorMessage.value = '';
   } catch (e: any) {
     videos.value = [];
     totalPages.value = 1;
     currentPage.value = inputPage.value = 1;
-    errorMessage.value = axios.isAxiosError(e) && e.response
-      ? `エラーが発生しました: ${e.response.status} ${e.response.statusText}`
-      : '予期しないエラーが発生しました';
-    console.error('動画取得失敗:', e);
+    
+    if (axios.isAxiosError(e)) {
+      if (e.code === 'ECONNABORTED') {
+        errorMessage.value = t('errors.timeout');
+      } else if (e.response) {
+        errorMessage.value = t('errors.httpError', { status: e.response.status, statusText: e.response.statusText });
+      } else if (e.request) {
+        errorMessage.value = t('errors.networkError');
+      } else {
+        errorMessage.value = t('errors.requestError');
+      }
+    } else {
+      errorMessage.value = t('errors.unexpected');
+    }
   }
 }
 
@@ -264,11 +299,9 @@ watch(
   { immediate: true }
 );
 
-// 追加: itemsPerPageが変わったときに再取得
 watch(
   () => itemsPerPage.value,
   () => {
-    // 現在のページ数を維持 or 1ページに戻すなどのロジック
     currentPage.value = 1;
     loadVideos(currentPage.value, searchQuery.value, selectedSort.value, filterMode.value);
   },
@@ -310,7 +343,7 @@ watch(
 }
 
 .video-card {
-  margin: 0; /* カード外の余白をリセット */
+  margin: 0;
   outline: 3px solid var(--video-outline-color);
   margin: 3px;
 }
@@ -323,10 +356,10 @@ watch(
   .video-card ion-card-title {
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 4; /* 2行に制限 */
+    -webkit-line-clamp: 4;
     overflow: hidden;
     white-space: normal;
-    margin: 0.2rem 0; /* アイテム間に少し余白を追加 */
+    margin: 0.2rem 0;
     line-height: 1.2;
     font-size: 1rem;
   }

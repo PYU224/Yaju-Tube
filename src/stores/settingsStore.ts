@@ -19,10 +19,13 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const changeLanguage = (newLocale: string) => {
     locale.value = newLocale
-    i18n.global.locale.value = newLocale
+    i18n.global.locale.value = newLocale as 'ja' | 'en' | 'de'
     localStorage.setItem('locale', newLocale)
   }
 
+  const setDefaultInstanceUrl = (url: string) => {
+    defaultInstanceUrl.value = url
+  }
   // 表示設定 リスト方式 or グリッド表示
   function setDisplayMode(mode: 'list' | 'grid') {
     displayMode.value = mode
@@ -31,7 +34,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const savedLocale = localStorage.getItem('locale')
   if (savedLocale) {
     locale.value = savedLocale
-    i18n.global.locale.value = savedLocale
+    i18n.global.locale.value = savedLocale as 'ja' | 'en' | 'de'
   }
 
   return {
@@ -43,6 +46,7 @@ export const useSettingsStore = defineStore('settings', () => {
     locale,
     setTheme,
     changeLanguage,
+    setDefaultInstanceUrl,
     displayMode,
     setDisplayMode
   }

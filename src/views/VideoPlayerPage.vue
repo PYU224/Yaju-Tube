@@ -40,8 +40,7 @@ import { marked } from 'marked'
 import '../theme/variables.css';
 // 動画画面の向き設定
 import { ScreenOrientation } from '@capacitor/screen-orientation';
-
-// ナビゲーションバーのめり込み禁止
+import { Capacitor } from '@capacitor/core';
 
 const route = useRoute();
 const instanceStore = useInstanceStore();
@@ -75,9 +74,10 @@ const onFullScreenChange = async () => {
     }
   } else {
     try {
-      const orientation = window.screen.orientation;
-      if (orientation?.lock) {
-        await orientation.lock(isFS ? 'landscape' : 'portrait');
+      // 型エラー回避のため any でキャスト
+      const orientation = window.screen.orientation as any;
+      if (orientation && typeof orientation.lock === 'function') {
+        await orientation.lock(isFS ? 'landscape-primary' : 'portrait-primary');
       } else {
         console.warn('ブラウザ: screen.orientation.lock はサポートされていません');
       }
@@ -87,11 +87,10 @@ const onFullScreenChange = async () => {
   }
 };
 
-
 /*
 DOMPurify.addHook を使い、サニタイズの前後で <a> タグを調整
-target="_blank" を一時属性に保存（before）
-sanitize 後に復元し、rel="noopener noreferrer"を追加（after）
+target="_blank" を一時属性に保存(before)
+sanitize 後に復元し、rel="noopener noreferrer"を追加(after)
 */
 DOMPurify.addHook('beforeSanitizeAttributes', (node) => {
   if (node.tagName === 'A' && node.hasAttribute('target')) {
@@ -113,8 +112,8 @@ async function fetchVideo() {
   video.value = resp.data
   const rawDesc = resp.data.description || ''
 
-  // 1. Markdown → HTML
-  let html = marked(rawDesc)
+  // 1. Markdown → HTML (awaitを追加)
+  let html = await marked(rawDesc)
   // 2. 改行を <br> に変換
   html = html.replace(/\n+/g, '<br>')
   // 3. サニタイズしてリンク安全化
@@ -141,7 +140,6 @@ const handleOrientationChange = () => {
 };
 
 onMounted(async () => {
-
   // 説明文呼び出し
   fetchVideo()
 
@@ -158,7 +156,7 @@ onMounted(async () => {
     document.addEventListener('fullscreenchange', onFullScreenChange);
     document.addEventListener('webkitfullscreenchange', onFullScreenChange);
 
-    // 初期状態: 縦向きに固定（例外保護付き）
+    // 初期状態: 縦向きに固定(例外保護付き)
     if (Capacitor.getPlatform() !== 'web') {
       try {
         await ScreenOrientation.lock({ orientation: 'portrait' });
@@ -189,11 +187,6 @@ onBeforeUnmount(async () => {
   font-size: 1.2rem;
 }
 .iframeWrap {
-/*
-  display: flex;
-  justify-content: center;
-  align-items: center;
-*/
   position: absolute;
   top: 0;
   left: 0;
@@ -202,9 +195,8 @@ onBeforeUnmount(async () => {
 }
 .iframeWrap iframe {
   width: 100%;
-  /* max-width: 640px; 必要に応じて最大幅を設定 */
   height: auto;
-  aspect-ratio: 16 / 9; /* アスペクト比を維持 */
+  aspect-ratio: 16 / 9;
 }
 
 .description {

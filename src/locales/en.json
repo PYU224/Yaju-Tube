@@ -6,26 +6,21 @@
     "exampleUrl": "Example: 810video.com",
     "inputInstanceUrl": "Input Default Instance URL",
     "inputSave": "Save",
-
     "instanceLists": "Instances",
     "instanceDelete": "Delete",
-
     "videolist": "Video List",
     "pages": "Page",
     "search": "Search Videos",
     "getVideo": "Available no Videos.",
     "pageNumber": "Page Number",
-
     "settings": "Settings",
     "about": "About this app",
     "addInstance": "Add Instance",
-    "mining": "Mining XMR for Developers",
     "setDefaultInstance": "Set Default Instance URL",
     "setItems": "Items per page",
     "setThemes": "Theme",
     "setNotification": "Notifications",
     "setLanguage": "Language Settings",
-
     "getVideoInfo": "Getting video information...",
     "getLoading": "Now Loading..."
   },
@@ -46,5 +41,21 @@
     "all": "All",
     "local": "Local",
     "controls": "Search&Sort"
+  },
+  "aria": {
+    "switchToList": "Switch to list view",
+    "switchToGrid": "Switch to grid view",
+    "prevPage": "Go to previous page",
+    "nextPage": "Go to next page",
+    "goToPage": "Go to specified page",
+    "pageNumberInput": "Enter page number",
+    "thumbnailNotAvailable": "Thumbnail not available"
+  },
+  "errors": {
+    "timeout": "Request timed out",
+    "httpError": "Error {status}: {statusText}",
+    "networkError": "Network error: Unable to connect to server",
+    "requestError": "Error occurred while configuring request",
+    "unexpected": "An unexpected error occurred"
   }
 }

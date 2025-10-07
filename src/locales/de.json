@@ -16,7 +16,6 @@
     "settings": "Einstellungen",
     "about": "Über diese App",
     "addInstance": "Instanz hinzufügen",
-    "mining": "XMR für Entwickler minen",
     "setDefaultInstance": "Standardinstanz festlegen",
     "setItems": "Anzahl pro Seite",
     "setThemes": "Thema",
@@ -42,5 +41,21 @@
     "all": "Alle",
     "local": "Lokal",
     "controls": "Suchen und Sortieren"
+  },
+  "aria": {
+    "switchToList": "Zur Listenansicht wechseln",
+    "switchToGrid": "Zur Rasteransicht wechseln",
+    "prevPage": "Zur vorherigen Seite",
+    "nextPage": "Zur nächsten Seite",
+    "goToPage": "Zur angegebenen Seite",
+    "pageNumberInput": "Seitenzahl eingeben",
+    "thumbnailNotAvailable": "Vorschaubild nicht verfügbar"
+  },
+  "errors": {
+    "timeout": "Zeitüberschreitung der Anfrage",
+    "httpError": "Fehler {status}: {statusText}",
+    "networkError": "Netzwerkfehler: Verbindung zum Server nicht möglich",
+    "requestError": "Fehler beim Konfigurieren der Anfrage",
+    "unexpected": "Ein unerwarteter Fehler ist aufgetreten"
   }
 }
