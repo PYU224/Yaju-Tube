@@ -27,18 +27,27 @@
 主にここのIssueでバグ報告やリクエストを受け付けています。</p>
 ### ソースからのビルド
 
-#### 要件
+## ソースからのビルド
+
+### 要件
 - Node.js 16 以上と npm
-- JDK 11 以上
+- JDK 17 以上
 - Android SDK
 
-#### ビルド手順
+### ビルド手順
 ```bash
-# 依存関係のインストール
+# リポジトリのクローン
+git clone https://github.com/PYU224/Yaju-Tube.git
+cd Yaju-Tube
+
+# 依存関係のインストール（開発用依存関係も含む）
 npm install
 
-# Web アプリのビルド
+# Web アプリケーションのビルド
 npm run build
+
+# アイコンとスプラッシュ画像の生成
+npx @capacitor/assets generate
 
 # Capacitor との同期
 npx cap sync android
