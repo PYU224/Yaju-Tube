@@ -35,8 +35,39 @@ node_modules/
 .env
 dist/
 ios/
-android/
+# android/ は除外しない（F-Droid用）
 vendor/
 
 !fastlane/metadata/android/
 !fastlane/metadata/android/**/*
+
+# ========================================
+# Android関連の除外設定（F-Droid対応）
+# ========================================
+
+# Keystore files - 絶対にコミットしない！
+*.keystore
+*.jks
+key.properties
+android/key.properties
+android/app/*.keystore
+android/app/*.jks
+android/app/key.properties
+android/app/my-release-key.keystore
+android/app/release.keystore
+
+# Android ビルド成果物
+android/app/build/
+android/build/
+android/.gradle/
+android/.cxx/
+android/captures/
+android/app/release/
+
+# Android ローカル設定
+android/local.properties
+android/.externalNativeBuild/
+
+# Gradle
+.gradle/
+*.hprof

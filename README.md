@@ -50,6 +50,7 @@ npm run build
 npx @capacitor/assets generate
 
 # Capacitor との同期
+# （注：android フォルダは既にリポジトリに含まれています）
 npx cap sync android
 
 # Android APK のビルド
