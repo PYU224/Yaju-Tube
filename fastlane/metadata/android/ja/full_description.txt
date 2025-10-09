@@ -1,20 +1,11 @@
-<strong>Yaju-Tube</strong>はシンプルで軽量なPeertubeの再生アプリです。
+Yaju-Tubeは軽量なPeertube動画プレイヤーアプリです。
 
-<strong><font color="#339933">[Features]</font></strong>
+機能：
+- Peertubeインスタンスの動画を閲覧
+- 動画の検索とフィルタリング
+- 複数の並び替えオプション
+- ライト/ダークテーマ
+- 多言語対応（英語、日本語、ドイツ語）
+- 複数インスタンスの追加と管理
 
-* 無駄を省いたシンプルで分かりやすいデザイン。
-* 検索機能を使って目当ての動画をすぐ見つけることができます。
-* インスタンスを追加して使い分けられる機能を搭載。
-
-<strong><font color="#339933">[Objective]</font></strong>
-
-* このアプリは、コンテンツを視聴したいユーザーに可能な限り最速の視聴時間を提供するように設計されており、公式のPeertubeアプリの軽量な代替アプリとして機能します。
-
-<strong><font color="#339933">[Note]</font></strong>
-
-* このアプリは現在開発中ですので、バグや機能のリクエストがある場合は、下記のGithub Issuesに報告してください。
-
-<strong><font color="#339933">[Source]</font></strong>
-
-* GitHub  
-https://github.com/PYU224/Yaju-Tube
+このアプリは公式Peertubeアプリが重すぎて使えなかったため作成されました。Androidで高速かつ効率的にPeertube動画を視聴できます。
