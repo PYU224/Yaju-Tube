@@ -1,6 +1,7 @@
 # Yaju-Tube
-恐らく淫夢といった例のアレ発のPeertubeの再生プレイヤーアプリです。<br>
-名前とアイコン画像は適当です。
+
+A Peertube video player app, originating from the Japanese internet culture community.<br>
+The name and icon are intentionally casual.
 
 <div align="center">
 
@@ -15,76 +16,101 @@
 
 </div>
 
-## 概要
+**[🇯🇵 日本語版はこちら (Japanese README)](README.ja.md)**
+
+**[🇬🇧 English README](README.md)**
+
+## Overview
+
 <div align="center">
 
-<p><img alt="peertube player app 真夏の夜の淫夢 例のアレ" src="./sample.png" width="320" height="552"></p>
+<p><img alt="peertube player app" src="./sample.png" width="320" height="552"></p>
 
 </div>
 
-<p>これはPeertubeの公式アプリが重くて使えなかったので、AIに頼りつつ独力で何かできないかと思って適当に作ってみたPeertubeの動画再生アプリです。</p>
-<p>一応動きますがまだまだ開発途中です。<br>
-主にここのIssueでバグ報告やリクエストを受け付けています。</p>
-### ソースからのビルド
+<p>This is a Peertube video player app I created because the official Peertube app was too slow to use. I built it with the help of AI while learning on my own.</p>
 
-## ソースからのビルド
+<p>The app is functional but still under active development.<br>
+Bug reports and feature requests are welcomed via the Issues section.</p>
 
-### 要件
-- Node.js 16 以上と npm
-- JDK 17 以上
+## Building from Source
+
+### Requirements
+- Node.js 16 or higher with npm
+- JDK 17 or higher
 - Android SDK
 
-### ビルド手順
+### Build Instructions
 ```bash
-# リポジトリのクローン
+# Clone the repository
 git clone https://github.com/PYU224/Yaju-Tube.git
 cd Yaju-Tube
 
-# 依存関係のインストール（開発用依存関係も含む）
+# Install dependencies (including dev dependencies)
 npm install
 
-# Web アプリケーションのビルド
+# Build the web application
 npm run build
 
-# アイコンとスプラッシュ画像の生成
+# Generate app icons and splash screens
 npx @capacitor/assets generate
 
-# Capacitor との同期
-# （注：android フォルダは既にリポジトリに含まれています）
+# Sync with Capacitor
+# (Note: The android folder is already included in the repository)
 npx cap sync android
 
-# Android APK のビルド
+# Build the Android APK
 cd android
 ./gradlew assembleRelease
 ```
 
-## ロードマップ
-まずは安定して動くようにしたいです。<br>
-<p>安定して動くようになったらApkファイルをF-Droidに登録して配布する形になります。<br>
-<a href="https://f-droid.org/ja/">https://f-droid.org/ja/</a></p>
+The generated APK will be located at ```android/app/build/outputs/apk/release/app-release.apk.```
 
-### 重要度：高
-- ループ再生のON・OFF
-- マイリスト機能（設定も込みでインポート・エクスポート機能付きを想定）
-- ~~横向きの全画面といったYoutubeやPeertubeの公式アプリみたいに動画の向きの切り替えができるように~~
-- ~~動画のソート順を新しい順以外も選択できるように~~
+## Technical Details
 
-### 重要度：中
-- インスタンスへのログイン機能
-- コメント欄の閲覧と書き込み
-- ~~ライトモードとダークモード~~（追加完了）
-- 多言語訳（英語はほぼ完了）
-- ~~動画一覧の表示方法を設定で変更できるように~~
+Framework: Vue.js 3 + Capacitor 6
+Build System: Vite
+Java Compatibility: Java 17 (JDK 17 or higher required)
+Target Android: minSdkVersion 23, targetSdkVersion 35
 
-### 重要度：低
-- ライブチャットのコメント欄の閲覧と書き込み（Peertubeの拡張機能だから後回し）
-- Youtubeやニコニコ動画を広告なしで閲覧できる機能（多分難しい）
-- Peertubeのインスタンスを選んで動画を投稿する機能（アプリで動画を投稿する場合は投稿制限にも配慮する必要があるはず）
-- XMRのマイニング（面白そうだが弊害が多そう）
+## Build Notes
 
-## 連絡先
-- リンク集<br>
+This is a Capacitor-based hybrid application
+Java 17 or higher is mandatory (Java 8 or 11 will cause "invalid source release 21" errors)
+The android/build.gradle includes settings to enforce Java 17 across all subprojects
+The android folder is included in the repository, so npx cap add android is not necessary
+
+## Roadmap
+The primary goal is to make the app stable and reliable.<br>
+<p>Once stable, the app will be published on F-Droid for distribution.<br>
+<a href="https://f-droid.org/">https://f-droid.org/</a></p>
+
+### High Priority
+
+- Loop playback toggle (ON/OFF)
+- Playlist feature (with import/export functionality including settings)
+- ~~Landscape fullscreen mode with video orientation switching (like YouTube or official Peertube app)~~
+- ~~Additional video sorting options beyond "newest first"~~
+
+### Medium Priority
+
+- Instance login functionality
+- Comment viewing and posting
+- ~~Light mode and dark mode (Completed)~~
+- Multi-language support (English translation mostly complete)
+- ~~Customizable video list display settings~~
+
+### Low Priority
+
+- Live chat comment viewing and posting (Peertube extension feature, lower priority)
+- Ad-free YouTube and Niconico video playback (likely difficult to implement)
+- Video upload functionality to selected Peertube instances (would need to consider upload restrictions)
+- XMR mining (interesting but potentially problematic)
+
+Contact
+
+Links<br>
 https://linksta.cc/@pyu224
 
-## ライセンス
-GPL-3.0です。
+License
+GPL-3.0
