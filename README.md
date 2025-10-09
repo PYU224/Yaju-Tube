@@ -107,10 +107,9 @@ The primary goal is to make the app stable and reliable.<br>
 - Video upload functionality to selected Peertube instances (would need to consider upload restrictions)
 - XMR mining (interesting but potentially problematic)
 
-Contact
-
-Links<br>
+## Contact
+- Links<br>
 https://linksta.cc/@pyu224
 
-License
+## License
 GPL-3.0
