@@ -29,22 +29,40 @@ import i18n from './i18n'
 import { EdgeToEdge } from '@capawesome/capacitor-android-edge-to-edge-support';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
-// ナビゲーションバーへのめり込み防止 
-// await EdgeToEdge.setBackgroundColor({ color: '#000000' });
+// 🆕 デバイス言語取得ユーティリティをインポート
+import { getInitialLocale } from './utils/locale';
 
 const pinia = createPinia();
-;
+pinia.use(piniaPluginPersistedstate);
+
 const app = createApp(App)
   .use(router)
-
-pinia.use(piniaPluginPersistedstate);
-app.use(pinia);
-app.use(IonicVue, { innerHTMLTemplatesEnabled: true });
-app.use(i18n)
+  .use(pinia)
+  .use(IonicVue, { innerHTMLTemplatesEnabled: true })
+  .use(i18n)
 
 import { useSettingsStore } from '@/stores/settingsStore';
-const settingsStore = useSettingsStore();
-document.body.setAttribute('data-theme', settingsStore.theme);
+
+// 🆕 アプリ起動時にデバイス言語を設定
+async function initializeApp() {
+  const settingsStore = useSettingsStore();
+  
+  // テーマ設定
+  document.body.setAttribute('data-theme', settingsStore.theme);
+  
+  // 🆕 言語設定の初期化
+  const initialLocale = await getInitialLocale();
+  
+  // settingsStoreに保存されている言語と異なる場合のみ更新
+  if (settingsStore.locale !== initialLocale) {
+    settingsStore.changeLanguage(initialLocale);
+  } else {
+    // 既に正しい言語が設定されている場合もi18nに反映
+    i18n.global.locale.value = settingsStore.locale as 'ja' | 'en' | 'de';
+  }
+  
+  console.log('App initialized with locale:', settingsStore.locale);
+}
 
 router.afterEach(() => {
   nextTick(() => {
@@ -60,17 +78,12 @@ router.afterEach(() => {
   });
 });
 
-router.isReady().then(() => {
-  app.mount('#app');
-});
-
 async function applyNavBarColor(theme: string) {
   const isLight = theme === 'light' || theme === 'sepia';
   const backgroundColor = isLight ? '#EEEEEE' : '#222222';
 
   if (Capacitor.getPlatform() === 'android') {
     try {
-    // 両バーへ同時に色適用
       await EdgeToEdge.setBackgroundColor({ color: backgroundColor });
     } catch (e) {
       console.error('EdgeToEdgeエラー:', e);
@@ -79,7 +92,6 @@ async function applyNavBarColor(theme: string) {
 
   if (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios') {
     try {
-    // ステータスバーテキスト色調整
       await StatusBar.setStyle({ style: isLight ? Style.Dark : Style.Light });
       await StatusBar.setOverlaysWebView({ overlay: true });
     } catch (e) {
@@ -87,15 +99,24 @@ async function applyNavBarColor(theme: string) {
     }
   }
 }
-// テーマ変更時にも呼び出し
-watch(
-  () => settingsStore.theme,
-  async (theme) => {
-    try {
-      await applyNavBarColor(theme);
-    } catch (err) {
-      console.error('ナビバーの色設定に失敗しました:', err);
-    }
-  },
-  { immediate: true }
-);
+
+// 🆕 アプリを初期化してからマウント
+router.isReady().then(async () => {
+  await initializeApp(); // 言語設定を初期化
+  app.mount('#app');
+  
+  const settingsStore = useSettingsStore();
+  
+  // テーマ変更時の処理
+  watch(
+    () => settingsStore.theme,
+    async (theme) => {
+      try {
+        await applyNavBarColor(theme);
+      } catch (err) {
+        console.error('ナビバーの色設定に失敗しました:', err);
+      }
+    },
+    { immediate: true }
+  );
+});

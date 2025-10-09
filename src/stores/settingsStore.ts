@@ -26,16 +26,18 @@ export const useSettingsStore = defineStore('settings', () => {
   const setDefaultInstanceUrl = (url: string) => {
     defaultInstanceUrl.value = url
   }
+  
   // 表示設定 リスト方式 or グリッド表示
   function setDisplayMode(mode: 'list' | 'grid') {
     displayMode.value = mode
   }
-  // 初期化時にローカルストレージから言語設定を読み込む
-  const savedLocale = localStorage.getItem('locale')
-  if (savedLocale) {
-    locale.value = savedLocale
-    i18n.global.locale.value = savedLocale as 'ja' | 'en' | 'de'
-  }
+  
+  // 🔄 初期化処理を削除（main.ts で行うため）
+  // const savedLocale = localStorage.getItem('locale')
+  // if (savedLocale) {
+  //   locale.value = savedLocale
+  //   i18n.global.locale.value = savedLocale as 'ja' | 'en' | 'de'
+  // }
 
   return {
     theme,

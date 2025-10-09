@@ -16,6 +16,7 @@
     "@capacitor/android": "^7.4.2",
     "@capacitor/app": "7.0.2",
     "@capacitor/core": "^7.4.3",
+    "@capacitor/device": "^7.0.2",
     "@capacitor/haptics": "7.0.2",
     "@capacitor/keyboard": "7.0.2",
     "@capacitor/screen-orientation": "^7.0.2",
