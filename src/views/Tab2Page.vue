@@ -97,7 +97,8 @@
             </ion-thumbnail>
             <ion-label>
               <h2>{{ video.name }}</h2>
-              <p>{{ video.channel.name }}</p>
+              <!-- 🆕 インスタンス名を表示 -->
+              <p>{{ getChannelWithHost(video) }}</p>
             </ion-label>
           </ion-item>
         </ion-list>
@@ -121,7 +122,8 @@
               />
               <ion-card-header>
                 <ion-card-title>{{ video.name }}</ion-card-title>
-                <ion-card-subtitle>{{ video.channel.name }}</ion-card-subtitle>
+                <!-- 🆕 インスタンス名を表示 -->
+                <ion-card-subtitle>{{ getChannelWithHost(video) }}</ion-card-subtitle>
               </ion-card-header>
             </ion-card>
           </div>
@@ -188,6 +190,7 @@ import {
 import { ref, watch, computed } from 'vue';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useInstanceStore } from '@/stores/instanceStore';
+import type { Video } from '@/types/video';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -211,7 +214,7 @@ const { t } = useI18n();
 const { itemsPerPage } = storeToRefs(settingsStore);
 
 const count = computed(() => settingsStore.itemsPerPage);
-const videos = ref<any[]>([]);
+const videos = ref<Video[]>([]);
 const currentPage = ref(1);
 const totalPages = ref(1);
 const inputPage = ref(1);
@@ -219,6 +222,20 @@ const searchQuery = ref('');
 const errorMessage = ref('');
 const selectedSort = ref<string>('-publishedAt');
 const filterMode = ref<'all' | 'local'>('all');
+
+// 🆕 チャンネル名＠インスタンス名の形式で返す関数
+const getChannelWithHost = (video: Video): string => {
+  const channelName = video.channel.displayName || video.channel.name;
+  const host = video.channel.host;
+  
+  // hostが存在し、かつ現在のインスタンスと異なる場合は @host を追加
+  if (host && host !== instanceStore.selectedInstanceUrl) {
+    return `${channelName}@${host}`;
+  }
+  
+  // ローカル動画の場合はチャンネル名のみ
+  return channelName;
+};
 
 const refresh = () => {
   currentPage.value = 1;
@@ -232,7 +249,7 @@ const onFilterChange = () => refresh();
 const onImageError = (event: Event) => {
   const img = event.target as HTMLImageElement;
   img.src = '/placeholder.png';
-  img.alt = t('aria.thumbnailNotAvailable'); // $t ではなく t を使う
+  img.alt = t('aria.thumbnailNotAvailable');
 };
 
 const getThumbnailUrl = (path: string) =>

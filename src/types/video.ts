@@ -7,6 +7,7 @@ export interface Video {
   channel: {
     name: string;
     displayName?: string;
+    host?: string; // 🆕 インスタンス名を追加
   };
   views?: number;
   likes?: number;

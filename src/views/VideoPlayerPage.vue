@@ -2,7 +2,7 @@
   <ion-page>
     <ion-header v-if="!isFullScreen">
       <ion-toolbar>
-        <ion-title>{{ video?.name || '動画再生' }}</ion-title>
+        <ion-title>{{ video?.name || $t('menu.videolist') }}</ion-title>
       </ion-toolbar>
     </ion-header>
 
@@ -23,7 +23,9 @@
           <div v-else-if="video" class="description">{{ $t('menu.getLoading') }}</div>
         </p>
       </div>
-      <div v-else class="notion">{{ $t('menu.getVideoInfo') }}</div>
+      <div v-else class="notion">
+        {{ errorMessage || $t('menu.getVideoInfo') }}
+      </div>
     </ion-content>
   </ion-page>
 </template>
@@ -35,9 +37,9 @@ import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { useInstanceStore } from '@/stores/instanceStore';
 import { PeerTubePlayer } from '@peertube/embed-api';
-import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { useI18n } from 'vue-i18n';
+import { sanitizeHtml } from '@/utils/sanitize'; // 🆕 統一されたサニタイズ関数を使用
 import '../theme/variables.css';
 // 動画画面の向き設定
 import { ScreenOrientation } from '@capacitor/screen-orientation';
@@ -55,6 +57,7 @@ const iframeRef = ref<HTMLIFrameElement | null>(null);
 
 // 動画説明文
 const descHtml = ref<string>('');
+const errorMessage = ref<string>(''); // 🆕 エラーメッセージ用
 
 const getEmbedUrl = (uuid: string) => {
   return `https://${instanceStore.selectedInstanceUrl}/videos/embed/${uuid}`;
@@ -73,46 +76,23 @@ const onFullScreenChange = async () => {
     try {
       await ScreenOrientation.lock({ orientation: isFS ? 'landscape' : 'portrait' });
     } catch (e) {
-      console.warn('ネイティブ向き制御失敗:', e);
+      // 向き制御失敗は致命的ではないので、エラーを表示しない
     }
   } else {
     try {
       const orientation = window.screen.orientation as any;
       if (orientation && typeof orientation.lock === 'function') {
         await orientation.lock(isFS ? 'landscape-primary' : 'portrait-primary');
-      } else {
-        console.warn('ブラウザ: screen.orientation.lock はサポートされていません');
       }
     } catch (e) {
-      console.warn('ブラウザ向き制御失敗:', e);
+      // ブラウザでの向き制御失敗は想定内
     }
   }
 };
 
-/*
-DOMPurify.addHook を使い、サニタイズの前後で <a> タグを調整
-target="_blank" を一時属性に保存(before)
-sanitize 後に復元し、rel="noopener noreferrer"を追加(after)
-*/
-DOMPurify.addHook('beforeSanitizeAttributes', (node) => {
-  if (node.tagName === 'A' && node.hasAttribute('target')) {
-    node.setAttribute('data-temp-target', node.getAttribute('target')!);
-  }
-});
-
-DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  if (node.tagName === 'A' && node.hasAttribute('data-temp-target')) {
-    const t = node.getAttribute('data-temp-target')!;
-    node.setAttribute('target', t);
-    node.setAttribute('rel', 'noopener noreferrer');
-    node.removeAttribute('data-temp-target');
-  }
-});
-
 // 動画情報と説明文を取得
 async function fetchVideo() {
   try {
-    console.log('Fetching video info...');
     const vid = route.params.videoId as string;
     const resp = await axios.get(
       `https://${instanceStore.selectedInstanceUrl}/api/v1/videos/${vid}`,
@@ -120,31 +100,25 @@ async function fetchVideo() {
     );
     
     video.value = resp.data;
-    console.log('Video data loaded:', video.value.name);
 
     // 説明文を処理
     const rawDesc = resp.data.description || '';
-    console.log('Raw description length:', rawDesc.length);
 
     if (rawDesc.trim()) {
       try {
         // 1. Markdown → HTML
         let html = await marked(rawDesc);
-        console.log('Markdown parsed');
         
         // 2. 改行を <br> に変換
         html = html.replace(/\n+/g, '<br>');
         
-        // 3. サニタイズしてリンク安全化
-        descHtml.value = DOMPurify.sanitize(html);
-        console.log('Description sanitized, length:', descHtml.value.length);
+        // 3. 🆕 統一されたサニタイズ関数を使用
+        descHtml.value = sanitizeHtml(html);
       } catch (markdownError) {
-        console.error('Markdown parsing error:', markdownError);
         // Markdownのパースに失敗した場合はプレーンテキストとして表示
-        descHtml.value = DOMPurify.sanitize(rawDesc.replace(/\n/g, '<br>'));
+        descHtml.value = sanitizeHtml(rawDesc.replace(/\n/g, '<br>'));
       }
     } else {
-      console.log('No description available');
       descHtml.value = '<p><em>' + t('menu.getVideo') + '</em></p>';
     }
 
@@ -154,24 +128,34 @@ async function fetchVideo() {
       try {
         player = new PeerTubePlayer(iframeRef.value);
         await player.ready;
-        console.log('PeerTube player ready');
       } catch (playerError) {
-        console.error('PeerTube player initialization error:', playerError);
+        // プレーヤー初期化失敗は動画再生には影響しない
       }
     }
   } catch (e) {
-    console.error('Failed to fetch video:', e);
+    // 🆕 エラーハンドリングを改善
     if (axios.isAxiosError(e)) {
       if (e.code === 'ECONNABORTED') {
-        console.error('Request timeout');
+        errorMessage.value = t('errors.timeout');
       } else if (e.response) {
-        console.error('HTTP error:', e.response.status, e.response.statusText);
+        errorMessage.value = t('errors.httpError', { 
+          status: e.response.status, 
+          statusText: e.response.statusText 
+        });
       } else if (e.request) {
-        console.error('Network error');
+        errorMessage.value = t('errors.networkError');
+      } else {
+        errorMessage.value = t('errors.requestError');
       }
+    } else {
+      errorMessage.value = t('errors.unexpected');
     }
-    // エラー時もvideo.valueをnullにしない（iframe表示のため）
-    descHtml.value = '<p><em>説明文の読み込みに失敗しました</em></p>';
+    
+    // エラー時も動画は表示を試みる（iframeで直接読み込めるかもしれないため）
+    video.value = { 
+      uuid: route.params.videoId as string,
+      name: t('menu.videolist')
+    };
   }
 }
 
@@ -186,14 +170,14 @@ onMounted(async () => {
       try {
         await ScreenOrientation.lock({ orientation: 'portrait' });
       } catch (e) {
-        console.warn('初期向き固定失敗:', e);
+        // 初期向き固定失敗は致命的ではない
       }
     }
 
     // 動画情報を取得
     await fetchVideo();
   } catch (e) {
-    console.error('onMounted内部で例外:', e);
+    errorMessage.value = t('errors.unexpected');
   }
 });
 
@@ -203,7 +187,7 @@ onBeforeUnmount(async () => {
   try {
     await ScreenOrientation.unlock();
   } catch (e) {
-    console.warn('向きアンロック失敗:', e);
+    // アンロック失敗は無視
   }
 });
 </script>
