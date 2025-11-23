@@ -92,7 +92,7 @@ onMounted(() => {
         <ion-alert
           trigger="about-alert"
           header="Yaju-Tube"
-          sub-header="Ver 1.5"
+          sub-header="Ver 1.5.3"
           message="<p>開発：PYU224</p><p>連絡先一覧：<br>https://linksta.cc/@pyu224 </p><p>ライセンス：MIT License</p>"
           cssClass="custom-alert"
         ></ion-alert>
