@@ -112,4 +112,4 @@ The primary goal is to make the app stable and reliable.<br>
 https://linksta.cc/@pyu224
 
 ## License
-GPL-3.0
+MIT

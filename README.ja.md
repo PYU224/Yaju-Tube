@@ -91,4 +91,4 @@ cd android
 https://linksta.cc/@pyu224
 
 ## ライセンス
-GPL-3.0です。
+MITです。
