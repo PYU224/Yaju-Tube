@@ -22,7 +22,11 @@
     "setNotification": "Benachrichtigungen",
     "setLanguage": "Spracheinstellungen",
     "getVideoInfo": "Videoinformationen werden geladen...",
-    "getLoading": "Wird geladen..."
+    "getLoading": "Wird geladen...",
+    "history": "Wiedergabeverlauf",
+    "noHistory": "Kein Wiedergabeverlauf",
+    "delete": "Löschen",
+    "cancel": "Abbrechen"
   },
   "modal": {
     "title": {
@@ -41,6 +45,18 @@
     "all": "Alle",
     "local": "Lokal",
     "controls": "Suchen und Sortieren"
+  },
+  "history": {
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "thisWeek": "Diese Woche",
+    "thisMonth": "Diesen Monat",
+    "older": "Älter",
+    "justNow": "Gerade eben",
+    "minutesAgo": "vor {n} Minuten",
+    "hoursAgo": "vor {n} Stunden",
+    "clearAll": "Alles löschen",
+    "clearConfirm": "Gesamten Wiedergabeverlauf löschen?"
   },
   "aria": {
     "switchToList": "Zur Listenansicht wechseln",

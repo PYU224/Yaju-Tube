@@ -1,7 +1,7 @@
 {
   "name": "yaju-tube",
   "private": true,
-  "version": "1.5.3",
+  "version": "1.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,7 @@
   "dependencies": {
     "@awesome-cordova-plugins/android-full-screen": "^8.1.0",
     "@capacitor/android": "^7.4.2",
-    "@capacitor/app": "7.0.2",
+    "@capacitor/app": "^7.1.0",
     "@capacitor/core": "^7.4.3",
     "@capacitor/device": "^7.0.2",
     "@capacitor/haptics": "7.0.2",
@@ -36,6 +36,7 @@
     "vue": "^3.5.18",
     "vue-i18n": "^11.1.11",
     "vue-router": "^4.5.1",
+    "vue-virtual-scroller": "^2.0.0-beta.8",
     "vuex": "^4.1.0"
   },
   "devDependencies": {

@@ -22,7 +22,11 @@
     "setNotification": "Notifications",
     "setLanguage": "Language Settings",
     "getVideoInfo": "Getting video information...",
-    "getLoading": "Now Loading..."
+    "getLoading": "Now Loading...",
+    "history": "Watch History",
+    "noHistory": "No watch history",
+    "delete": "Delete",
+    "cancel": "Cancel"
   },
   "modal": {
     "title": {
@@ -41,6 +45,18 @@
     "all": "All",
     "local": "Local",
     "controls": "Search&Sort"
+  },
+  "history": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "thisWeek": "This Week",
+    "thisMonth": "This Month",
+    "older": "Older",
+    "justNow": "Just now",
+    "minutesAgo": "{n} minutes ago",
+    "hoursAgo": "{n} hours ago",
+    "clearAll": "Clear All",
+    "clearConfirm": "Delete all watch history?"
   },
   "aria": {
     "switchToList": "Switch to list view",

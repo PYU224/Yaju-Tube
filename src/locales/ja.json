@@ -22,7 +22,11 @@
     "setNotification": "通知",
     "setLanguage": "言語設定",
     "getVideoInfo": "動画情報を取得中...",
-    "getLoading": "読み込み中..."
+    "getLoading": "読み込み中...",
+    "history": "視聴履歴",
+    "noHistory": "視聴履歴はありません",
+    "delete": "削除",
+    "cancel": "キャンセル"
   },
   "modal": {
     "title": {
@@ -41,6 +45,18 @@
     "all": "全動画",
     "local": "ローカルのみ",
     "controls": "検索と並び替え"
+  },
+  "history": {
+    "today": "今日",
+    "yesterday": "昨日",
+    "thisWeek": "今週",
+    "thisMonth": "今月",
+    "older": "それ以前",
+    "justNow": "たった今",
+    "minutesAgo": "{n}分前",
+    "hoursAgo": "{n}時間前",
+    "clearAll": "すべて削除",
+    "clearConfirm": "すべての視聴履歴を削除しますか？"
   },
   "aria": {
     "switchToList": "リスト表示に切り替え",

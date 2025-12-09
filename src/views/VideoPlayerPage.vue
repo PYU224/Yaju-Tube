@@ -2,7 +2,15 @@
   <ion-page>
     <ion-header v-if="!isFullScreen">
       <ion-toolbar>
+        <ion-buttons slot="start">
+          <ion-back-button default-href="/tabs/tab2"></ion-back-button>
+        </ion-buttons>
         <ion-title>{{ video?.name || $t('menu.videolist') }}</ion-title>
+        <ion-buttons slot="end">
+          <ion-button @click="togglePiP" v-if="pipSupported" :disabled="!isPlayerReady">
+            <ion-icon :icon="videocam"></ion-icon>
+          </ion-button>
+        </ion-buttons>
       </ion-toolbar>
     </ion-header>
 
@@ -31,43 +39,150 @@
 </template>
 
 <script setup lang="ts">
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue';
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonButton, IonBackButton, IonIcon } from '@ionic/vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { useInstanceStore } from '@/stores/instanceStore';
+import { useHistoryStore } from '@/stores/historyStore'; // 🆕 履歴ストア追加
 import { PeerTubePlayer } from '@peertube/embed-api';
 import { marked } from 'marked';
 import { useI18n } from 'vue-i18n';
-import { sanitizeHtml } from '@/utils/sanitize'; // 🆕 統一されたサニタイズ関数を使用
+import { sanitizeHtml } from '@/utils/sanitize';
 import '../theme/variables.css';
-// 動画画面の向き設定
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { Capacitor } from '@capacitor/core';
+import { videocam } from 'ionicons/icons';
 
 const route = useRoute();
 const instanceStore = useInstanceStore();
+const historyStore = useHistoryStore(); // 🆕 履歴ストア
 const { t } = useI18n();
 
 const video = ref<any>(null);
 const isPlaying = ref(false);
 const isFullScreen = ref(false);
+const isPlayerReady = ref(false);
 let player: PeerTubePlayer | null = null;
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 
-// 動画説明文
+// 🆕 進行状況の定期保存用
+let progressInterval: number | null = null;
+
 const descHtml = ref<string>('');
-const errorMessage = ref<string>(''); // 🆕 エラーメッセージ用
+const errorMessage = ref<string>('');
+
+const pipSupported = computed(() => {
+  if (Capacitor.getPlatform() === 'web') {
+    return 'pictureInPictureEnabled' in document;
+  }
+  return Capacitor.getPlatform() === 'android';
+});
 
 const getEmbedUrl = (uuid: string) => {
-  return `https://${instanceStore.selectedInstanceUrl}/videos/embed/${uuid}`;
+  // セッションストレージから一時的なインスタンスURLを取得（履歴から来た場合）
+  const tempInstance = sessionStorage.getItem('tempInstanceUrl');
+  const instanceUrl = tempInstance || instanceStore.selectedInstanceUrl;
+  
+  // 使用後は削除
+  if (tempInstance) {
+    sessionStorage.removeItem('tempInstanceUrl');
+  }
+  
+  return `https://${instanceUrl}/videos/embed/${uuid}`;
 };
 
 const handleVideoLoad = () => {
   isPlaying.value = true;
 };
 
-// 全画面追加解除時に呼ばれる
+// 🆕 視聴履歴に追加
+const addToHistory = () => {
+  if (!video.value) return;
+  
+  const channelName = video.value.channel?.displayName || video.value.channel?.name || 'Unknown';
+  
+  historyStore.addToHistory({
+    videoId: video.value.uuid,
+    videoName: video.value.name,
+    thumbnailPath: video.value.thumbnailPath || video.value.previewPath || '',
+    channelName: channelName,
+    instanceUrl: instanceStore.selectedInstanceUrl
+  });
+};
+
+// 🆕 再生位置を定期的に保存
+const startProgressTracking = async () => {
+  if (!player) return;
+  
+  progressInterval = window.setInterval(async () => {
+    try {
+      // 型定義にないメソッドなので型アサーションを使用
+      const currentTime = await (player as any).getCurrentPosition();
+      const duration = await (player as any).getDuration();
+      
+      if (video.value && currentTime > 0 && duration > 0) {
+        historyStore.updateProgress(
+          video.value.uuid,
+          currentTime,
+          duration
+        );
+      }
+    } catch (e) {
+      // プレイヤーの状態取得失敗は無視
+      console.debug('Progress tracking failed:', e);
+    }
+  }, 5000); // 5秒ごとに保存
+};
+
+// 🆕 保存された再生位置から再開
+const resumeFromHistory = async () => {
+  if (!player || !video.value) return;
+  
+  const historyItem = historyStore.getHistoryItem(video.value.uuid);
+  if (historyItem && historyItem.progress && historyItem.duration) {
+    // 90%以上視聴済みの場合は最初から再生
+    const progress = (historyItem.progress / historyItem.duration) * 100;
+    if (progress < 90) {
+      try {
+        // 型定義にないメソッドなので型アサーションを使用
+        await (player as any).seek(historyItem.progress);
+      } catch (e) {
+        console.warn('Failed to seek to saved position:', e);
+      }
+    }
+  }
+};
+
+const togglePiP = async () => {
+  if (!player || !isPlayerReady.value) {
+    console.warn('Player not ready');
+    return;
+  }
+
+  try {
+    if (Capacitor.getPlatform() === 'web') {
+      const iframe = iframeRef.value;
+      if (!iframe) return;
+
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        console.log('PiP requested');
+      }
+    } else if (Capacitor.getPlatform() === 'android') {
+      try {
+        const { App } = await import('@capacitor/app');
+        console.log('Android PiP mode requested');
+      } catch (e) {
+        console.warn('PiP not available on this device', e);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to toggle PiP:', err);
+  }
+};
+
 const onFullScreenChange = async () => {
   const fs = document.fullscreenElement || (document as any).webkitFullscreenElement;
   const isFS = !!fs;
@@ -76,7 +191,7 @@ const onFullScreenChange = async () => {
     try {
       await ScreenOrientation.lock({ orientation: isFS ? 'landscape' : 'portrait' });
     } catch (e) {
-      // 向き制御失敗は致命的ではないので、エラーを表示しない
+      // 向き制御失敗は致命的ではない
     }
   } else {
     try {
@@ -90,7 +205,6 @@ const onFullScreenChange = async () => {
   }
 };
 
-// 動画情報と説明文を取得
 async function fetchVideo() {
   try {
     const vid = route.params.videoId as string;
@@ -101,39 +215,59 @@ async function fetchVideo() {
     
     video.value = resp.data;
 
-    // 説明文を処理
     const rawDesc = resp.data.description || '';
 
     if (rawDesc.trim()) {
       try {
-        // 1. Markdown → HTML
         let html = await marked(rawDesc);
-        
-        // 2. 改行を <br> に変換
         html = html.replace(/\n+/g, '<br>');
-        
-        // 3. 🆕 統一されたサニタイズ関数を使用
         descHtml.value = sanitizeHtml(html);
       } catch (markdownError) {
-        // Markdownのパースに失敗した場合はプレーンテキストとして表示
         descHtml.value = sanitizeHtml(rawDesc.replace(/\n/g, '<br>'));
       }
     } else {
       descHtml.value = '<p><em>' + t('menu.getVideo') + '</em></p>';
     }
 
-    // PeerTube Player初期化
     await nextTick();
     if (iframeRef.value) {
       try {
         player = new PeerTubePlayer(iframeRef.value);
-        await player.ready;
+        
+        // 🆕 視聴履歴に追加（player.readyを待つ前に実行）
+        // プレイヤーの初期化を待たなくても履歴は追加できる
+        addToHistory();
+        
+        // タイムアウト付きでplayer.readyを待機
+        const readyTimeout = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Player ready timeout')), 5000)
+        );
+        
+        try {
+          await Promise.race([player.ready, readyTimeout]);
+          isPlayerReady.value = true;
+          console.log('Player is ready');
+        } catch (timeoutError) {
+          console.warn('Player ready timeout, continuing anyway:', timeoutError);
+          // タイムアウトしても処理を続行
+          isPlayerReady.value = true;
+        }
+        
+        // 🆕 保存された位置から再開
+        await resumeFromHistory();
+        
+        // 🆕 進行状況のトラッキング開始
+        startProgressTracking();
+        
+        if (pipSupported.value) {
+          setupPiPListeners();
+        }
       } catch (playerError) {
-        // プレーヤー初期化失敗は動画再生には影響しない
+        console.error('Player initialization failed:', playerError);
+        // エラーが発生しても履歴追加は既に完了している
       }
     }
   } catch (e) {
-    // 🆕 エラーハンドリングを改善
     if (axios.isAxiosError(e)) {
       if (e.code === 'ECONNABORTED') {
         errorMessage.value = t('errors.timeout');
@@ -151,7 +285,6 @@ async function fetchVideo() {
       errorMessage.value = t('errors.unexpected');
     }
     
-    // エラー時も動画は表示を試みる（iframeで直接読み込めるかもしれないため）
     video.value = { 
       uuid: route.params.videoId as string,
       name: t('menu.videolist')
@@ -159,13 +292,23 @@ async function fetchVideo() {
   }
 }
 
+const setupPiPListeners = () => {
+  if (Capacitor.getPlatform() === 'web') {
+    document.addEventListener('enterpictureinpicture', () => {
+      console.log('Entered PiP mode');
+    });
+    
+    document.addEventListener('leavepictureinpicture', () => {
+      console.log('Left PiP mode');
+    });
+  }
+};
+
 onMounted(async () => {
   try {
-    // 全画面イベントリスナー登録
     document.addEventListener('fullscreenchange', onFullScreenChange);
     document.addEventListener('webkitfullscreenchange', onFullScreenChange);
 
-    // 初期状態: 縦向きに固定
     if (Capacitor.getPlatform() !== 'web') {
       try {
         await ScreenOrientation.lock({ orientation: 'portrait' });
@@ -174,7 +317,6 @@ onMounted(async () => {
       }
     }
 
-    // 動画情報を取得
     await fetchVideo();
   } catch (e) {
     errorMessage.value = t('errors.unexpected');
@@ -182,8 +324,19 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(async () => {
+  // 🆕 進行状況トラッキング停止
+  if (progressInterval) {
+    clearInterval(progressInterval);
+  }
+  
   document.removeEventListener('fullscreenchange', onFullScreenChange);
   document.removeEventListener('webkitfullscreenchange', onFullScreenChange);
+  
+  if (Capacitor.getPlatform() === 'web') {
+    document.removeEventListener('enterpictureinpicture', () => {});
+    document.removeEventListener('leavepictureinpicture', () => {});
+  }
+  
   try {
     await ScreenOrientation.unlock();
   } catch (e) {

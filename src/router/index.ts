@@ -5,7 +5,7 @@ import TabsPage from '../views/TabsPage.vue'
 const routes: Array<RouteRecordRaw> = [
   {
     path: '/',
-    redirect: '/tabs/tab1'
+    redirect: '/tabs/tab2' // デフォルトは動画一覧
   },
   {
     path: '/tabs',
@@ -13,7 +13,7 @@ const routes: Array<RouteRecordRaw> = [
     children: [
       {
         path: '',
-        redirect: '/tabs/tab1'
+        redirect: '/tabs/tab2'
       },
       {
         path: 'tab1',
@@ -26,6 +26,10 @@ const routes: Array<RouteRecordRaw> = [
       {
         path: 'tab3',
         component: () => import('@/views/Tab3Page.vue')
+      },
+      {
+        path: 'tab4', // 🆕 視聴履歴タブ追加
+        component: () => import('@/views/Tab4Page.vue')
       },
       {
         path: 'video/:videoId',

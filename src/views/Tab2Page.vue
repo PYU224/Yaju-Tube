@@ -78,29 +78,35 @@
 
     <!-- コンテンツ：リスト or グリッド -->
     <ion-content :fullscreen="true">
-      <!-- リスト表示 -->
+      <!-- 🆕 リスト表示 - RecycleScrollerを使用 -->
       <template v-if="settingsStore.displayMode === 'list'">
         <ion-list v-if="videos.length > 0">
-          <ion-item
-            v-for="video in videos"
-            :key="video.uuid"
-            button
-            @click="goToVideo(video.uuid)"
+          <RecycleScroller
+            class="scroller"
+            :items="videos"
+            :item-size="88"
+            key-field="uuid"
+            v-slot="{ item }"
           >
-            <ion-thumbnail slot="start">
-              <img
-                :src="getThumbnailUrl(video.thumbnailPath)"
-                :alt="video.name"
-                loading="lazy"
-                @error="onImageError"
-              />
-            </ion-thumbnail>
-            <ion-label>
-              <h2>{{ video.name }}</h2>
-              <!-- 🆕 インスタンス名を表示 -->
-              <p>{{ getChannelWithHost(video) }}</p>
-            </ion-label>
-          </ion-item>
+            <ion-item
+              button
+              @click="goToVideo(item.uuid)"
+              class="video-item"
+            >
+              <ion-thumbnail slot="start">
+                <img
+                  :src="getThumbnailUrl(item.thumbnailPath)"
+                  :alt="item.name"
+                  loading="lazy"
+                  @error="onImageError"
+                />
+              </ion-thumbnail>
+              <ion-label>
+                <h2>{{ item.name }}</h2>
+                <p>{{ getChannelWithHost(item) }}</p>
+              </ion-label>
+            </ion-item>
+          </RecycleScroller>
         </ion-list>
       </template>
 
@@ -122,7 +128,6 @@
               />
               <ion-card-header>
                 <ion-card-title>{{ video.name }}</ion-card-title>
-                <!-- 🆕 インスタンス名を表示 -->
                 <ion-card-subtitle>{{ getChannelWithHost(video) }}</ion-card-subtitle>
               </ion-card-header>
             </ion-card>
@@ -199,6 +204,10 @@ import API from '@/api';
 import { useAuthStore } from '@/stores/auth';
 import { storeToRefs } from 'pinia';
 import { grid, list } from 'ionicons/icons';
+// 🆕 vue-virtual-scrollerをインポート
+// @ts-ignore - vue-virtual-scrollerの型定義エラーを回避
+import { RecycleScroller } from 'vue-virtual-scroller';
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 
 const authStore = useAuthStore();
 const token = authStore.accessToken;
@@ -223,17 +232,15 @@ const errorMessage = ref('');
 const selectedSort = ref<string>('-publishedAt');
 const filterMode = ref<'all' | 'local'>('all');
 
-// 🆕 チャンネル名＠インスタンス名の形式で返す関数
+// チャンネル名＠インスタンス名の形式で返す関数
 const getChannelWithHost = (video: Video): string => {
   const channelName = video.channel.displayName || video.channel.name;
   const host = video.channel.host;
   
-  // hostが存在し、かつ現在のインスタンスと異なる場合は @host を追加
   if (host && host !== instanceStore.selectedInstanceUrl) {
     return `${channelName}@${host}`;
   }
   
-  // ローカル動画の場合はチャンネル名のみ
   return channelName;
 };
 
@@ -344,6 +351,16 @@ watch(
 }
 .error-message {
   white-space: pre-wrap;
+}
+
+/* 🆕 RecycleScroller用のスタイル */
+.scroller {
+  height: 100%;
+}
+
+.video-item {
+  height: 88px;
+  min-height: 88px;
 }
 
 .video-grid {
