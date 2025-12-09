@@ -7,9 +7,10 @@
         </ion-buttons>
         <ion-title>{{ video?.name || $t('menu.videolist') }}</ion-title>
         <ion-buttons slot="end">
-          <ion-button @click="togglePiP" v-if="pipSupported" :disabled="!isPlayerReady">
+          <!-- PiP機能は現在開発中のため一時的に非表示 -->
+          <!-- <ion-button @click="togglePiP" v-if="pipSupported" :disabled="!isPlayerReady">
             <ion-icon :icon="videocam"></ion-icon>
-          </ion-button>
+          </ion-button> -->
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
