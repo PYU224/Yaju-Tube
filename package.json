@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test:e2e": "cypress run",
     "test:unit": "vitest",
+    "test:cov": "vitest run --coverage",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -45,6 +46,7 @@
     "@eslint/js": "^9.39.2",
     "@vitejs/plugin-legacy": "^7.2.1",
     "@vitejs/plugin-vue": "^6.0.1",
+    "@vitest/coverage-v8": "^4.0.17",
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/test-utils": "^2.4.6",
     "cypress": "^14.5.4",
