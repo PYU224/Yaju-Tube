@@ -7,9 +7,8 @@ on:
     branches: [main, master]
 
 jobs:
-  # Web application - Lint and Unit Tests
-  web-lint-test:
-    name: Web Lint & Test
+  web-quality:
+    name: Web Quality Gates
     runs-on: ubuntu-latest
 
     steps:
@@ -19,19 +18,33 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit dependencies
+        run: npm audit
+
+      - name: Check whitespace
+        run: git diff --check
+
       - name: Run ESLint
         run: npm run lint
 
-      - name: Run Unit Tests
-        run: npm run test:unit -- --run
+      - name: Run unit tests
+        run: npm test
 
-  # Android application - Build, Lint and Unit Tests
+      - name: Run coverage
+        run: npx vitest --run --coverage
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Run Cypress smoke test
+        run: npm run test:e2e
+
   android-build-test:
     name: Android Build & Test
     runs-on: ubuntu-latest
@@ -49,13 +62,19 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19'
           cache: 'npm'
+
+      - name: Install Android SDK packages
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          accept-android-sdk-licenses: true
 
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build Web assets
+      - name: Build web assets
         run: npm run build
 
       - name: Sync Capacitor
@@ -67,33 +86,33 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./android/gradlew
 
-      - name: Run Android Lint
+      - name: Run Android lint
         working-directory: ./android
         run: ./gradlew lintDebug
 
-      - name: Run Android Unit Tests
+      - name: Run Android unit tests
         working-directory: ./android
         run: ./gradlew testDebugUnitTest
 
-      - name: Build Debug APK
+      - name: Build debug APK
         working-directory: ./android
         run: ./gradlew assembleDebug
 
-      - name: Upload Lint Results
+      - name: Upload lint results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: lint-results
           path: android/app/build/reports/lint-results-debug.html
 
-      - name: Upload Test Results
+      - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
           path: android/app/build/test-results/
 
-      - name: Upload Debug APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         if: success()
         with:

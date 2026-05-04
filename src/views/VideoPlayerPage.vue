@@ -7,6 +7,31 @@
         </ion-buttons>
         <ion-title>{{ video?.name || $t('menu.videolist') }}</ion-title>
         <ion-buttons slot="end">
+          <ion-button
+            v-if="video"
+            fill="clear"
+            :aria-label="isSavedToPlaylist ? t('aria.removeFromPlaylist') : t('aria.addToPlaylist')"
+            :color="isSavedToPlaylist ? 'primary' : 'medium'"
+            @click="togglePlaylistItem"
+          >
+            <ion-icon
+              slot="icon-only"
+              :icon="isSavedToPlaylist ? bookmark : bookmarkOutline"
+              aria-hidden="true"
+            ></ion-icon>
+          </ion-button>
+          <ion-button
+            fill="clear"
+            :aria-label="loopPlayback ? t('aria.disableLoopPlayback') : t('aria.enableLoopPlayback')"
+            :color="loopPlayback ? 'primary' : 'medium'"
+            @click="toggleLoopPlayback"
+          >
+            <ion-icon
+              slot="icon-only"
+              :icon="repeat"
+              aria-hidden="true"
+            ></ion-icon>
+          </ion-button>
           <!-- PiP機能は現在開発中のため一時的に非表示 -->
           <!-- <ion-button @click="togglePiP" v-if="pipSupported" :disabled="!isPlayerReady">
             <ion-icon :icon="videocam"></ion-icon>
@@ -26,11 +51,9 @@
           allowfullscreen
           @load="handleVideoLoad"
         ></iframe>
-        <p>
-          <!-- 動画説明文 -->
-          <div v-if="descHtml" class="description" v-html="descHtml"></div>
-          <div v-else-if="video" class="description">{{ $t('menu.getLoading') }}</div>
-        </p>
+        <!-- 動画説明文 -->
+        <div v-if="descHtml" class="description" v-html="descHtml"></div>
+        <div v-else class="description">{{ $t('menu.getLoading') }}</div>
       </div>
       <div v-else class="notion">
         {{ errorMessage || $t('menu.getVideoInfo') }}
@@ -40,38 +63,47 @@
 </template>
 
 <script setup lang="ts">
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonButton, IonBackButton, IonIcon } from '@ionic/vue';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonBackButton, IonButton, IonIcon } from '@ionic/vue';
 import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { useInstanceStore } from '@/stores/instanceStore';
 import { useHistoryStore } from '@/stores/historyStore'; // 🆕 履歴ストア追加
-import { PeerTubePlayer } from '@peertube/embed-api';
+import { usePlaylistStore } from '@/stores/playlistStore';
+import { PeerTubePlayer } from '@/utils/peerTubePlayer';
 import { marked } from 'marked';
 import { useI18n } from 'vue-i18n';
 import { sanitizeHtml } from '@/utils/sanitize';
 import '../theme/variables.css';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { Capacitor } from '@capacitor/core';
-import { videocam } from 'ionicons/icons';
+import { bookmark, bookmarkOutline, repeat } from 'ionicons/icons';
 
 const route = useRoute();
 const instanceStore = useInstanceStore();
 const historyStore = useHistoryStore(); // 🆕 履歴ストア
+const playlistStore = usePlaylistStore();
 const { t } = useI18n();
 
 const video = ref<any>(null);
 const isPlaying = ref(false);
 const isFullScreen = ref(false);
-const isPlayerReady = ref(false);
+const loopPlayback = ref(false);
 let player: PeerTubePlayer | null = null;
 const iframeRef = ref<HTMLIFrameElement | null>(null);
+const loopRestartThresholdSeconds = 1;
 
 // 🆕 進行状況の定期保存用
 let progressInterval: number | null = null;
 
 const descHtml = ref<string>('');
 const errorMessage = ref<string>('');
+const tempInstanceUrl = sessionStorage.getItem('tempInstanceUrl');
+const embedInstanceUrl = ref(tempInstanceUrl || instanceStore.selectedInstanceUrl);
+
+if (tempInstanceUrl) {
+  sessionStorage.removeItem('tempInstanceUrl');
+}
 
 const pipSupported = computed(() => {
   if (Capacitor.getPlatform() === 'web') {
@@ -81,48 +113,74 @@ const pipSupported = computed(() => {
 });
 
 const getEmbedUrl = (uuid: string) => {
-  // セッションストレージから一時的なインスタンスURLを取得（履歴から来た場合）
-  const tempInstance = sessionStorage.getItem('tempInstanceUrl');
-  const instanceUrl = tempInstance || instanceStore.selectedInstanceUrl;
-  
-  // 使用後は削除
-  if (tempInstance) {
-    sessionStorage.removeItem('tempInstanceUrl');
-  }
-  
-  return `https://${instanceUrl}/videos/embed/${uuid}`;
+  return `https://${embedInstanceUrl.value}/videos/embed/${uuid}`;
 };
+
+const getVideoChannelName = () => {
+  return video.value.channel?.displayName || video.value.channel?.name || 'Unknown';
+};
+
+const isSavedToPlaylist = computed(() => {
+  if (!video.value) {
+    return false;
+  }
+
+  return playlistStore.isInPlaylist(video.value.uuid, embedInstanceUrl.value);
+});
 
 const handleVideoLoad = () => {
   isPlaying.value = true;
 };
 
+const toggleLoopPlayback = () => {
+  loopPlayback.value = !loopPlayback.value;
+};
+
+const togglePlaylistItem = () => {
+  if (!video.value) {
+    return;
+  }
+
+  if (isSavedToPlaylist.value) {
+    playlistStore.removeFromPlaylist(video.value.uuid, embedInstanceUrl.value);
+    return;
+  }
+
+  playlistStore.addToPlaylist({
+    videoId: video.value.uuid,
+    videoName: video.value.name,
+    thumbnailPath: video.value.thumbnailPath || video.value.previewPath || '',
+    channelName: getVideoChannelName(),
+    instanceUrl: embedInstanceUrl.value
+  });
+};
+
 // 🆕 視聴履歴に追加
 const addToHistory = () => {
-  if (!video.value) return;
-  
-  const channelName = video.value.channel?.displayName || video.value.channel?.name || 'Unknown';
-  
   historyStore.addToHistory({
     videoId: video.value.uuid,
     videoName: video.value.name,
     thumbnailPath: video.value.thumbnailPath || video.value.previewPath || '',
-    channelName: channelName,
-    instanceUrl: instanceStore.selectedInstanceUrl
+    channelName: getVideoChannelName(),
+    instanceUrl: embedInstanceUrl.value
   });
 };
 
 // 🆕 再生位置を定期的に保存
-const startProgressTracking = async () => {
-  if (!player) return;
-  
+const startProgressTracking = (activePlayer: PeerTubePlayer) => {
   progressInterval = window.setInterval(async () => {
     try {
-      // 型定義にないメソッドなので型アサーションを使用
-      const currentTime = await (player as any).getCurrentPosition();
-      const duration = await (player as any).getDuration();
+      const currentTime = await activePlayer.getCurrentPosition();
+      const duration = await activePlayer.getDuration();
       
       if (video.value && currentTime > 0 && duration > 0) {
+        if (loopPlayback.value && currentTime >= duration - loopRestartThresholdSeconds) {
+          await activePlayer.seek(0);
+          await activePlayer.play();
+          historyStore.updateProgress(video.value.uuid, 0, duration);
+          return;
+        }
+
         historyStore.updateProgress(
           video.value.uuid,
           currentTime,
@@ -137,50 +195,18 @@ const startProgressTracking = async () => {
 };
 
 // 🆕 保存された再生位置から再開
-const resumeFromHistory = async () => {
-  if (!player || !video.value) return;
-  
-  const historyItem = historyStore.getHistoryItem(video.value.uuid);
+const resumeFromHistory = async (activePlayer: PeerTubePlayer, videoId: string) => {
+  const historyItem = historyStore.getHistoryItem(videoId);
   if (historyItem && historyItem.progress && historyItem.duration) {
     // 90%以上視聴済みの場合は最初から再生
     const progress = (historyItem.progress / historyItem.duration) * 100;
     if (progress < 90) {
       try {
-        // 型定義にないメソッドなので型アサーションを使用
-        await (player as any).seek(historyItem.progress);
+        await activePlayer.seek(historyItem.progress);
       } catch (e) {
         console.warn('Failed to seek to saved position:', e);
       }
     }
-  }
-};
-
-const togglePiP = async () => {
-  if (!player || !isPlayerReady.value) {
-    console.warn('Player not ready');
-    return;
-  }
-
-  try {
-    if (Capacitor.getPlatform() === 'web') {
-      const iframe = iframeRef.value;
-      if (!iframe) return;
-
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else {
-        console.log('PiP requested');
-      }
-    } else if (Capacitor.getPlatform() === 'android') {
-      try {
-        const { App } = await import('@capacitor/app');
-        console.log('Android PiP mode requested');
-      } catch (e) {
-        console.warn('PiP not available on this device', e);
-      }
-    }
-  } catch (err) {
-    console.error('Failed to toggle PiP:', err);
   }
 };
 
@@ -191,7 +217,7 @@ const onFullScreenChange = async () => {
   if (Capacitor.getPlatform() !== 'web') {
     try {
       await ScreenOrientation.lock({ orientation: isFS ? 'landscape' : 'portrait' });
-    } catch (e) {
+    } catch {
       // 向き制御失敗は致命的ではない
     }
   } else {
@@ -200,7 +226,7 @@ const onFullScreenChange = async () => {
       if (orientation && typeof orientation.lock === 'function') {
         await orientation.lock(isFS ? 'landscape-primary' : 'portrait-primary');
       }
-    } catch (e) {
+    } catch {
       // ブラウザでの向き制御失敗は想定内
     }
   }
@@ -208,9 +234,9 @@ const onFullScreenChange = async () => {
 
 async function fetchVideo() {
   try {
-    const vid = route.params.videoId as string;
+    const vid = route.params['videoId'] as string;
     const resp = await axios.get(
-      `https://${instanceStore.selectedInstanceUrl}/api/v1/videos/${vid}`,
+      `https://${embedInstanceUrl.value}/api/v1/videos/${vid}`,
       { timeout: 10000 }
     );
     
@@ -223,7 +249,7 @@ async function fetchVideo() {
         let html = await marked(rawDesc);
         html = html.replace(/\n+/g, '<br>');
         descHtml.value = sanitizeHtml(html);
-      } catch (markdownError) {
+      } catch {
         descHtml.value = sanitizeHtml(rawDesc.replace(/\n/g, '<br>'));
       }
     } else {
@@ -246,19 +272,17 @@ async function fetchVideo() {
         
         try {
           await Promise.race([player.ready, readyTimeout]);
-          isPlayerReady.value = true;
           console.log('Player is ready');
         } catch (timeoutError) {
           console.warn('Player ready timeout, continuing anyway:', timeoutError);
           // タイムアウトしても処理を続行
-          isPlayerReady.value = true;
         }
         
         // 🆕 保存された位置から再開
-        await resumeFromHistory();
+        await resumeFromHistory(player, video.value.uuid);
         
         // 🆕 進行状況のトラッキング開始
-        startProgressTracking();
+        startProgressTracking(player);
         
         if (pipSupported.value) {
           setupPiPListeners();
@@ -286,10 +310,7 @@ async function fetchVideo() {
       errorMessage.value = t('errors.unexpected');
     }
     
-    video.value = { 
-      uuid: route.params.videoId as string,
-      name: t('menu.videolist')
-    };
+    video.value = null;
   }
 }
 
@@ -313,13 +334,13 @@ onMounted(async () => {
     if (Capacitor.getPlatform() !== 'web') {
       try {
         await ScreenOrientation.lock({ orientation: 'portrait' });
-      } catch (e) {
+      } catch {
         // 初期向き固定失敗は致命的ではない
       }
     }
 
     await fetchVideo();
-  } catch (e) {
+  } catch {
     errorMessage.value = t('errors.unexpected');
   }
 });
@@ -340,7 +361,7 @@ onBeforeUnmount(async () => {
   
   try {
     await ScreenOrientation.unlock();
-  } catch (e) {
+  } catch {
     // アンロック失敗は無視
   }
 });

@@ -201,16 +201,10 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import '../theme/variables.css';
 import API from '@/api';
-import { useAuthStore } from '@/stores/auth';
 import { storeToRefs } from 'pinia';
 import { grid, list } from 'ionicons/icons';
-// 🆕 vue-virtual-scrollerをインポート
-// @ts-ignore - vue-virtual-scrollerの型定義エラーを回避
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
-
-const authStore = useAuthStore();
-const token = authStore.accessToken;
 
 const router = useRouter();
 const goToVideo = (videoId: string) => {

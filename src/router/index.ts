@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from '@ionic/vue-router';
-import { RouteRecordRaw } from 'vue-router';
+import type { RouteRecordRaw } from 'vue-router';
 import TabsPage from '../views/TabsPage.vue'
 
 const routes: Array<RouteRecordRaw> = [
@@ -30,6 +30,10 @@ const routes: Array<RouteRecordRaw> = [
       {
         path: 'tab4', // 🆕 視聴履歴タブ追加
         component: () => import('@/views/Tab4Page.vue')
+      },
+      {
+        path: 'tab5',
+        component: () => import('@/views/Tab5Page.vue')
       },
       {
         path: 'video/:videoId',

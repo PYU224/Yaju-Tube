@@ -1,10 +1,9 @@
-import { createApp, nextTick, watch } from 'vue';
+import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate';
 import App from './App.vue';
 import router from './router';
 import { IonicVue } from '@ionic/vue';
-import { Capacitor } from '@capacitor/core'
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/vue/css/core.css';
 
@@ -25,12 +24,12 @@ import '@ionic/vue/css/display.css';
 import './theme/variables.css';
 
 import i18n from './i18n'
-// ナビゲーションバーへのめり込み防止 
-import { EdgeToEdge } from '@capawesome/capacitor-android-edge-to-edge-support';
-import { StatusBar, Style } from '@capacitor/status-bar';
-
-// デバイス言語取得ユーティリティをインポート
-import { getInitialLocale } from './utils/locale';
+import {
+  initializeAppSettings,
+  registerFocusRestoration,
+  watchThemeNativeChrome,
+} from './appBootstrap';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const pinia = createPinia();
 pinia.use(piniaPluginPersistedstate);
@@ -41,80 +40,15 @@ const app = createApp(App)
   .use(IonicVue, { innerHTMLTemplatesEnabled: true })
   .use(i18n)
 
-import { useSettingsStore } from '@/stores/settingsStore';
-
-// アプリ起動時にデバイス言語を設定
-async function initializeApp() {
-  const settingsStore = useSettingsStore();
-  
-  // テーマ設定
-  document.body.setAttribute('data-theme', settingsStore.theme);
-  
-  // 言語設定の初期化
-  const initialLocale = await getInitialLocale();
-  
-  // settingsStoreに保存されている言語と異なる場合のみ更新
-  if (settingsStore.locale !== initialLocale) {
-    settingsStore.changeLanguage(initialLocale);
-  } else {
-    // 既に正しい言語が設定されている場合もi18nに反映
-    i18n.global.locale.value = settingsStore.locale as 'ja' | 'en' | 'de';
-  }
-}
-
-router.afterEach(() => {
-  nextTick(() => {
-    try {
-      const active = document.activeElement as HTMLElement | null;
-      if (active?.blur) active.blur();
-      document.body.tabIndex = 0;
-      document.body.focus();
-      document.body.removeAttribute('tabindex');
-    } catch (e) {
-      // DOM操作のエラーは致命的ではないので無視
-    }
-  });
-});
-
-async function applyNavBarColor(theme: string) {
-  const isLight = theme === 'light' || theme === 'sepia';
-  const backgroundColor = isLight ? '#EEEEEE' : '#222222';
-
-  if (Capacitor.getPlatform() === 'android') {
-    try {
-      await EdgeToEdge.setBackgroundColor({ color: backgroundColor });
-    } catch (e) {
-      // EdgeToEdgeエラーは致命的ではない
-    }
-  }
-
-  if (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios') {
-    try {
-      await StatusBar.setStyle({ style: isLight ? Style.Dark : Style.Light });
-      await StatusBar.setOverlaysWebView({ overlay: true });
-    } catch (e) {
-      // StatusBarエラーは致命的ではない
-    }
-  }
-}
+registerFocusRestoration(router);
 
 // アプリを初期化してからマウント
 router.isReady().then(async () => {
-  await initializeApp(); // 言語設定を初期化
-  app.mount('#app');
-  
   const settingsStore = useSettingsStore();
-  
+
+  await initializeAppSettings(settingsStore); // 言語設定を初期化
+  app.mount('#app');
+
   // テーマ変更時の処理
-  watch(
-    () => settingsStore.theme,
-    async (theme) => {
-      try {
-        await applyNavBarColor(theme);
-      } catch (err) {
-        // ナビバーの色設定失敗は致命的ではない
-      }
-    },
-    { immediate: true }
-  );
+  watchThemeNativeChrome(settingsStore);
 });

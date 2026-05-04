@@ -1,0 +1,6 @@
+* text=auto
+
+*.bat text eol=crlf
+.github/workflows/*.yml text eol=lf
+package.json text eol=lf
+package-lock.json text eol=lf
