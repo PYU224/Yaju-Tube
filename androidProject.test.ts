@@ -7,6 +7,7 @@ const appId = 'com.github.pyu224.yaju_tube'
 const javaPath = './android/app/src/main/java/com/github/pyu224/yaju_tube/MainActivity.java'
 const unitTestPath = './android/app/src/test/java/com/github/pyu224/yaju_tube/ExampleUnitTest.java'
 const instrumentedTestPath = './android/app/src/androidTest/java/com/github/pyu224/yaju_tube/ExampleInstrumentedTest.java'
+const stringsPath = './android/app/src/main/res/values/strings.xml'
 
 describe('Android project metadata', () => {
   it('keeps the Gradle namespace, application id, manifest activity, and Java package aligned', () => {
@@ -18,6 +19,17 @@ describe('Android project metadata', () => {
     expect(manifest).toContain('android:name=".MainActivity"')
     expect(existsSync(javaPath)).toBe(true)
     expect(readFileSync(javaPath, 'utf8')).toContain(`package ${appId};`)
+  })
+
+  it('aligns the strings.xml package resources with the application id', () => {
+    // Guards against the regression where the Gradle namespace was renamed but
+    // these resources kept the io.ionic.starter default, so the manifest's
+    // .MainActivity resolved to a class that did not exist.
+    const strings = readFileSync(stringsPath, 'utf8')
+
+    expect(strings).toContain(`<string name="package_name">${appId}</string>`)
+    expect(strings).toContain(`<string name="custom_url_scheme">${appId}</string>`)
+    expect(strings).not.toContain('io.ionic.starter')
   })
 
   it('uses the production application id in Android test packages', () => {
