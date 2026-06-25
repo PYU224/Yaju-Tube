@@ -24,6 +24,7 @@
     "getVideoInfo": "Getting video information...",
     "getLoading": "Now Loading...",
     "history": "Watch History",
+    "playlist": "Playlist",
     "noHistory": "No watch history",
     "delete": "Delete",
     "cancel": "Cancel"
@@ -58,6 +59,17 @@
     "clearAll": "Clear All",
     "clearConfirm": "Delete all watch history?"
   },
+  "playlist": {
+    "empty": "No saved playlist items",
+    "exportTitle": "Export Playlist",
+    "importTitle": "Import Playlist",
+    "importHelp": "Paste exported JSON to restore playlist items and settings.",
+    "importPlaceholder": "Playlist JSON",
+    "import": "Import",
+    "importError": "Could not import playlist",
+    "clearAll": "Clear Playlist",
+    "clearConfirm": "Delete all playlist items?"
+  },
   "aria": {
     "switchToList": "Switch to list view",
     "switchToGrid": "Switch to grid view",
@@ -65,7 +77,11 @@
     "nextPage": "Go to next page",
     "goToPage": "Go to specified page",
     "pageNumberInput": "Enter page number",
-    "thumbnailNotAvailable": "Thumbnail not available"
+    "thumbnailNotAvailable": "Thumbnail not available",
+    "enableLoopPlayback": "Enable loop playback",
+    "disableLoopPlayback": "Disable loop playback",
+    "addToPlaylist": "Add to playlist",
+    "removeFromPlaylist": "Remove from playlist"
   },
   "errors": {
     "timeout": "Request timed out",

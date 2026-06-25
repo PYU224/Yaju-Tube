@@ -18,6 +18,11 @@
           <ion-label>History</ion-label>
         </ion-tab-button>
 
+        <ion-tab-button tab="tab5" href="/tabs/tab5">
+          <ion-icon :icon="bookmarks" />
+          <ion-label>Playlist</ion-label>
+        </ion-tab-button>
+
         <ion-tab-button tab="tab3" href="/tabs/tab3">
           <ion-icon :icon="settings" />
           <ion-label>Options</ion-label>
@@ -29,5 +34,5 @@
 
 <script setup lang="ts">
 import { IonTabBar, IonTabButton, IonTabs, IonLabel, IonIcon, IonPage, IonRouterOutlet } from '@ionic/vue';
-import { list, play, settings, time } from 'ionicons/icons';
+import { bookmarks, list, play, settings, time } from 'ionicons/icons';
 </script>

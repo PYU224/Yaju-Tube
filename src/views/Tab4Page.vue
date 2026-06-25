@@ -264,8 +264,7 @@ const goToVideo = (item: HistoryItem) => {
 
 // 再生進行度を取得
 const getProgressPercent = (item: HistoryItem): number => {
-  if (!item.progress || !item.duration) return 0;
-  return (item.progress / item.duration) * 100;
+  return (item.progress! / item.duration!) * 100;
 };
 
 // 時間の経過を表示（相対時間）

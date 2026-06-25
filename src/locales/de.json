@@ -24,6 +24,7 @@
     "getVideoInfo": "Videoinformationen werden geladen...",
     "getLoading": "Wird geladen...",
     "history": "Wiedergabeverlauf",
+    "playlist": "Wiedergabeliste",
     "noHistory": "Kein Wiedergabeverlauf",
     "delete": "Löschen",
     "cancel": "Abbrechen"
@@ -58,6 +59,17 @@
     "clearAll": "Alles löschen",
     "clearConfirm": "Gesamten Wiedergabeverlauf löschen?"
   },
+  "playlist": {
+    "empty": "Keine gespeicherten Einträge",
+    "exportTitle": "Wiedergabeliste exportieren",
+    "importTitle": "Wiedergabeliste importieren",
+    "importHelp": "Exportiertes JSON einfügen, um Einträge und Einstellungen wiederherzustellen.",
+    "importPlaceholder": "Wiedergabelisten-JSON",
+    "import": "Importieren",
+    "importError": "Wiedergabeliste konnte nicht importiert werden",
+    "clearAll": "Wiedergabeliste löschen",
+    "clearConfirm": "Alle Einträge der Wiedergabeliste löschen?"
+  },
   "aria": {
     "switchToList": "Zur Listenansicht wechseln",
     "switchToGrid": "Zur Rasteransicht wechseln",
@@ -65,7 +77,11 @@
     "nextPage": "Zur nächsten Seite",
     "goToPage": "Zur angegebenen Seite",
     "pageNumberInput": "Seitenzahl eingeben",
-    "thumbnailNotAvailable": "Vorschaubild nicht verfügbar"
+    "thumbnailNotAvailable": "Vorschaubild nicht verfügbar",
+    "enableLoopPlayback": "Wiedergabeschleife aktivieren",
+    "disableLoopPlayback": "Wiedergabeschleife deaktivieren",
+    "addToPlaylist": "Zur Wiedergabeliste hinzufügen",
+    "removeFromPlaylist": "Aus Wiedergabeliste entfernen"
   },
   "errors": {
     "timeout": "Zeitüberschreitung der Anfrage",

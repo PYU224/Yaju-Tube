@@ -24,6 +24,7 @@
     "getVideoInfo": "動画情報を取得中...",
     "getLoading": "読み込み中...",
     "history": "視聴履歴",
+    "playlist": "マイリスト",
     "noHistory": "視聴履歴はありません",
     "delete": "削除",
     "cancel": "キャンセル"
@@ -58,6 +59,17 @@
     "clearAll": "すべて削除",
     "clearConfirm": "すべての視聴履歴を削除しますか？"
   },
+  "playlist": {
+    "empty": "マイリストはありません",
+    "exportTitle": "マイリストをエクスポート",
+    "importTitle": "マイリストをインポート",
+    "importHelp": "エクスポートしたJSONを貼り付けてください。設定も一緒に復元されます。",
+    "importPlaceholder": "マイリストJSON",
+    "import": "インポート",
+    "importError": "マイリストを読み込めませんでした",
+    "clearAll": "マイリストをすべて削除",
+    "clearConfirm": "マイリストをすべて削除しますか？"
+  },
   "aria": {
     "switchToList": "リスト表示に切り替え",
     "switchToGrid": "グリッド表示に切り替え",
@@ -65,7 +77,11 @@
     "nextPage": "次のページへ",
     "goToPage": "指定ページへ移動",
     "pageNumberInput": "ページ番号を入力",
-    "thumbnailNotAvailable": "サムネイル画像が利用できません"
+    "thumbnailNotAvailable": "サムネイル画像が利用できません",
+    "enableLoopPlayback": "ループ再生を有効にする",
+    "disableLoopPlayback": "ループ再生を無効にする",
+    "addToPlaylist": "マイリストに追加",
+    "removeFromPlaylist": "マイリストから削除"
   },
   "errors": {
     "timeout": "リクエストがタイムアウトしました",

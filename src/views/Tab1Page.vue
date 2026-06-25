@@ -15,12 +15,9 @@ import {
 } from '@ionic/vue';
 import { useRouter } from 'vue-router';
 import '../theme/variables.css';
-import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
 const instanceStore = useInstanceStore();
-
-const { t } = useI18n();
 
 const deleteInstance = (url: string) => {
   instanceStore.removeInstance(url);

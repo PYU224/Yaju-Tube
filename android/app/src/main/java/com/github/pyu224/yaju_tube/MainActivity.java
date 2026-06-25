@@ -1,4 +1,4 @@
-package io.ionic.starter;
+package com.github.pyu224.yaju_tube;
 
 import com.getcapacitor.BridgeActivity;
 

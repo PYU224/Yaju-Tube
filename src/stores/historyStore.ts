@@ -13,6 +13,9 @@ export interface HistoryItem {
   duration?: number; // 動画の長さ（秒）
 }
 
+type HistoryGroupKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'older';
+type GroupedHistory = Record<HistoryGroupKey, HistoryItem[]>;
+
 export const useHistoryStore = defineStore('history', () => {
   // 視聴履歴（最新が先頭）
   const history = ref<HistoryItem[]>([]);
@@ -22,15 +25,27 @@ export const useHistoryStore = defineStore('history', () => {
 
   // 視聴履歴を追加
   const addToHistory = (item: Omit<HistoryItem, 'watchedAt'>) => {
+    const existing = history.value.find(h => h.videoId === item.videoId);
+
     // 既存の履歴から同じ動画を削除（重複防止）
     history.value = history.value.filter(h => h.videoId !== item.videoId);
-    
-    // 新しい履歴を先頭に追加
-    history.value.unshift({
+
+    const refreshedItem: HistoryItem = {
       ...item,
       watchedAt: Date.now()
-    });
-    
+    };
+
+    if (refreshedItem.progress === undefined && existing?.progress !== undefined) {
+      refreshedItem.progress = existing.progress;
+    }
+
+    if (refreshedItem.duration === undefined && existing?.duration !== undefined) {
+      refreshedItem.duration = existing.duration;
+    }
+
+    // 新しい履歴を先頭に追加
+    history.value.unshift(refreshedItem);
+
     // 最大件数を超えたら古いものを削除
     if (history.value.length > MAX_HISTORY) {
       history.value = history.value.slice(0, MAX_HISTORY);
@@ -67,7 +82,7 @@ export const useHistoryStore = defineStore('history', () => {
 
   // 日付でグループ化した履歴
   const groupedHistory = computed(() => {
-    const groups: { [key: string]: HistoryItem[] } = {
+    const groups: GroupedHistory = {
       today: [],
       yesterday: [],
       thisWeek: [],

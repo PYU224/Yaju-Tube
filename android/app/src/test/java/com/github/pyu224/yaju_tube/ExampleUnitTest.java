@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package com.github.pyu224.yaju_tube;
 
 import static org.junit.Assert.*;
 
