@@ -3,6 +3,9 @@ import { defineStore } from 'pinia';
 
 export interface PendingUpload {
   host: string;
+  // Account the upload belongs to, so a different account on the same host on a
+  // shared device is not shown another user's pending upload.
+  username: string;
   uploadId: string;
   name: string;
   channelId: number;

@@ -65,6 +65,21 @@ describe('API client', () => {
     expect(headers.Authorization).toBeUndefined()
   })
 
+  it('does not attach an expired token (avoids 401 on public lists)', async () => {
+    const authStore = useAuthStore()
+    authStore.setSession({
+      accessToken: 'token-123',
+      username: 'yaju',
+      host: 'peertube.example',
+      channels: [],
+      expiresAt: 1, // already in the past
+    })
+
+    const headers = await getCapturedHeaders('https://peertube.example/api/v1/videos')
+
+    expect(headers.Authorization).toBeUndefined()
+  })
+
   it('does not add Authorization when there is no session', async () => {
     const headers = await getCapturedHeaders('https://peertube.example/api/v1/videos')
 

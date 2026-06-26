@@ -52,9 +52,13 @@ const ionicStubs = {
     name: 'IonSelect',
     props: ['modelValue'],
     emits: ['update:modelValue'],
-    template: '<select><slot /></select>',
+    template:
+      '<select :value="modelValue" @change="$emit(\'update:modelValue\', Number($event.target.value))"><slot /></select>',
   },
-  IonSelectOption: { template: '<option><slot /></option>' },
+  IonSelectOption: {
+    props: ['value'],
+    template: '<option :value="value"><slot /></option>',
+  },
   IonProgressBar: {
     name: 'IonProgressBar',
     props: ['value'],
@@ -372,6 +376,7 @@ describe('UploadPage', () => {
       })
       useUploadStore().setPending({
         host: '810video.com',
+        username: 'yaju',
         uploadId: 'UP-RESUME',
         name: 'Half done',
         channelId: 1,
@@ -426,6 +431,7 @@ describe('UploadPage', () => {
       })
       useUploadStore().setPending({
         host: '810video.com',
+        username: 'yaju',
         uploadId: 'UP-RESUME',
         name: 'Half done',
         channelId: 1,
@@ -467,6 +473,7 @@ describe('UploadPage', () => {
       })
       useUploadStore().setPending({
         host: '810video.com',
+        username: 'yaju',
         uploadId: 'UP-DISCARD',
         name: 'X',
         channelId: 1,
@@ -485,6 +492,108 @@ describe('UploadPage', () => {
     expect(mockedCancelUpload).toHaveBeenCalledWith(
       expect.objectContaining({ uploadId: 'UP-DISCARD' }),
     )
+    expect(wrapper.find('[aria-label="resume-upload"]').exists()).toBe(false)
+  })
+
+  it('hides the view-video button for a private upload', async () => {
+    mockedUploadVideo.mockResolvedValue({ uuid: 'uuid-private' })
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+    })
+
+    const file = new File(['data'], 'clip.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', { value: [file], configurable: true })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    // Select Private in the privacy select (the last <select> on the page).
+    const selects = wrapper.findAll('select')
+    const privacySelect = selects[selects.length - 1]!
+    ;(privacySelect.element as HTMLSelectElement).value = String(VIDEO_PRIVACY.PRIVATE)
+    await privacySelect.trigger('change')
+
+    await wrapper.get('[aria-label="start-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedUploadVideo).toHaveBeenCalledWith(
+      expect.objectContaining({ privacy: VIDEO_PRIVACY.PRIVATE }),
+    )
+    expect(wrapper.text()).toContain(i18n.global.t('upload.success'))
+    // Private videos can't load through the public embed, so no view link.
+    expect(wrapper.find('[aria-label="view-video"]').exists()).toBe(false)
+  })
+
+  it('cancels a stale pending upload server-side when a new upload is started', async () => {
+    mockedCancelUpload.mockResolvedValue(undefined)
+    mockedUploadVideo.mockResolvedValue({ uuid: 'uuid-new' })
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+      useUploadStore().setPending({
+        host: '810video.com',
+        username: 'yaju',
+        uploadId: 'UP-OLD',
+        name: 'Old clip',
+        channelId: 1,
+        privacy: VIDEO_PRIVACY.PUBLIC,
+        description: '',
+        fileName: 'old.mp4',
+        fileSize: 4,
+        fileLastModified: 1_700_000_000_000,
+        uploadedBytes: 2,
+      })
+    })
+
+    const file = new File(['data'], 'new.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', { value: [file], configurable: true })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    await wrapper.get('[aria-label="start-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedCancelUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: 'UP-OLD' }),
+    )
+    expect(mockedUploadVideo).toHaveBeenCalled()
+  })
+
+  it('does not show a pending upload that belongs to a different account', async () => {
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+      useUploadStore().setPending({
+        host: '810video.com',
+        username: 'someone-else',
+        uploadId: 'UP-OTHER',
+        name: 'Their clip',
+        channelId: 1,
+        privacy: VIDEO_PRIVACY.PUBLIC,
+        description: '',
+        fileName: 'x.mp4',
+        fileSize: 4,
+        fileLastModified: 1_700_000_000_000,
+        uploadedBytes: 2,
+      })
+    })
+
     expect(wrapper.find('[aria-label="resume-upload"]').exists()).toBe(false)
   })
 

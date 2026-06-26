@@ -534,6 +534,25 @@ describe('uploadVideo', () => {
     expect((third[1] as Blob).size).toBe(half);
   });
 
+  it('stops retrying and rethrows a 413 once the chunk is already at the minimum size', async () => {
+    const file = makeFile(256 * 1024);
+    mockedPost.mockResolvedValueOnce({ headers: { location: '?upload_id=UP413' } });
+    // Persistent 413 even as the chunk shrinks 1 MiB -> 512 KiB -> 256 KiB (floor).
+    const tooLarge = { response: { status: 413 } };
+    mockedPut
+      .mockRejectedValueOnce(tooLarge)
+      .mockRejectedValueOnce(tooLarge)
+      .mockRejectedValueOnce(tooLarge)
+      .mockRejectedValue(tooLarge);
+
+    await expect(
+      uploadVideo({ host: 'peertube.example', token: 'tok', file, name: 'n', channelId: 1 }),
+    ).rejects.toBe(tooLarge);
+
+    // Three attempts: full size, half, then the floor — then it gives up.
+    expect(mockedPut).toHaveBeenCalledTimes(3);
+  });
+
   it('throws AbortError when the signal is already aborted', async () => {
     const file = makeFile(1024 * 1024);
     mockedPost.mockResolvedValueOnce({ headers: { location: '?upload_id=UP3' } });

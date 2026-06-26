@@ -5,6 +5,7 @@ import { type PendingUpload, useUploadStore } from './uploadStore'
 function pending(overrides: Partial<PendingUpload> = {}): PendingUpload {
   return {
     host: 'peertube.example',
+    username: 'alice',
     uploadId: 'UP-1',
     name: 'My Video',
     channelId: 3,

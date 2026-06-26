@@ -168,6 +168,7 @@
         >
           {{ $t('upload.success') }}
           <ion-button
+            v-if="canViewUploaded"
             aria-label="view-video"
             @click="onViewVideo"
           >
@@ -250,7 +251,16 @@ const privacy = ref<VideoPrivacy>(VIDEO_PRIVACY.PUBLIC);
 const uploading = ref(false);
 const progress = ref(0);
 const uploadedUuid = ref('');
+const uploadedPrivacy = ref<VideoPrivacy | null>(null);
 const uploadError = ref('');
+
+// Private/Internal videos can't be opened through the unauthenticated public
+// embed player, so only offer "View video" for Public/Unlisted uploads.
+const canViewUploaded = computed(
+  () =>
+    uploadedPrivacy.value === VIDEO_PRIVACY.PUBLIC ||
+    uploadedPrivacy.value === VIDEO_PRIVACY.UNLISTED,
+);
 let abortController: AbortController | null = null;
 let currentUploadId: string | null = null;
 
@@ -306,12 +316,14 @@ function onLogout() {
   authStore.logout();
 }
 
-// 現在ログイン中のインスタンスに紐づく、未完了のアップロード
-const pendingUpload = computed(() =>
-  uploadStore.pending && uploadStore.pending.host === authStore.host
-    ? uploadStore.pending
-    : null,
-);
+// 現在ログイン中のインスタンス・アカウントに紐づく、未完了のアップロード。
+// 共有端末で別アカウントが同一ホストにログインしても他人の保留は表示しない。
+const pendingUpload = computed(() => {
+  const p = uploadStore.pending;
+  return p && p.host === authStore.host && p.username === (authStore.username ?? '')
+    ? p
+    : null;
+});
 
 // 再開には、中断時と同じファイル(名前・サイズ・更新日時が一致)の再選択が必要。
 // 別ファイルの混入による破損を防ぐ。
@@ -403,8 +415,23 @@ async function onStartUpload() {
     return;
   }
 
+  // Starting a new upload while a previous one is still pending would overwrite
+  // its persisted record; cancel that orphaned server-side session first.
+  const stalePending = pendingUpload.value;
+  if (stalePending) {
+    void cancelUpload({
+      host: authStore.host as string,
+      token: authStore.accessToken as string,
+      uploadId: stalePending.uploadId,
+    }).catch(() => {
+      // ignore — the local record is replaced regardless
+    });
+    uploadStore.clearPending();
+  }
+
   const file = selectedFile.value;
   const channelId = selectedChannelId.value;
+  const uploadPrivacy = privacy.value;
   abortController = new AbortController();
   currentUploadId = null;
   uploading.value = true;
@@ -416,17 +443,18 @@ async function onStartUpload() {
       file,
       name: name.value,
       channelId,
-      privacy: privacy.value,
+      privacy: uploadPrivacy,
       description: description.value,
       signal: abortController.signal,
       onInit: (uploadId: string) => {
         currentUploadId = uploadId;
         uploadStore.setPending({
           host: authStore.host as string,
+          username: authStore.username ?? '',
           uploadId,
           name: name.value,
           channelId,
-          privacy: privacy.value,
+          privacy: uploadPrivacy,
           description: description.value,
           fileName: file.name,
           fileSize: file.size,
@@ -440,6 +468,7 @@ async function onStartUpload() {
       },
     });
     uploadedUuid.value = result.uuid;
+    uploadedPrivacy.value = uploadPrivacy;
     uploadStore.clearPending();
     currentUploadId = null;
   } catch {
@@ -484,6 +513,7 @@ async function onResume() {
       },
     });
     uploadedUuid.value = result.uuid;
+    uploadedPrivacy.value = pending.privacy as VideoPrivacy;
     uploadStore.clearPending();
     currentUploadId = null;
   } catch {

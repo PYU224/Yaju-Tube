@@ -316,6 +316,12 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 413) {
+        // Already at the floor and still rejected (e.g. a proxy with a body
+        // limit below CHUNK_MIN): unrecoverable, so fail visibly instead of
+        // retrying the same offset forever.
+        if (chunkSize <= CHUNK_MIN) {
+          throw err;
+        }
         maxChunkSize = Math.max(CHUNK_MIN, Math.floor(maxChunkSize / 2));
         chunkSize = clamp(Math.floor(chunkSize / 2), CHUNK_MIN, maxChunkSize);
         // retry the SAME offset (do not advance start)
