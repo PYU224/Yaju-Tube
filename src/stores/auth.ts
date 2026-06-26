@@ -13,7 +13,10 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     getAccessToken: state => state.accessToken,
-    isLoggedIn: (state): boolean => !!state.accessToken,
+    // Require a full session (token + host), so a token restored from the
+    // pre-upload persisted schema is treated as logged out instead of crashing
+    // the upload flow on a null host.
+    isLoggedIn: (state): boolean => !!state.accessToken && !!state.host,
   },
   actions: {
     setToken(token: string) {

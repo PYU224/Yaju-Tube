@@ -171,6 +171,18 @@ describe('login', () => {
     ).rejects.toBeInstanceOf(PeerTubeAuthError);
   });
 
+  it('maps the OAuth2 `error` field (e.g. invalid_grant) to PeerTubeAuthError', async () => {
+    mockedGet.mockResolvedValueOnce({
+      data: { client_id: 'cid', client_secret: 'secret' },
+    });
+    // PeerTube's OAuth layer reports bad credentials via `error`, not `code`.
+    mockedPost.mockRejectedValueOnce({ response: { data: { error: 'invalid_grant' } } });
+
+    await expect(
+      login({ host: 'peertube.example', username: 'a', password: 'b' }),
+    ).rejects.toMatchObject({ name: 'PeerTubeAuthError', code: 'invalid_grant' });
+  });
+
   it('rethrows non-auth errors untouched', async () => {
     mockedGet.mockResolvedValueOnce({
       data: { client_id: 'cid', client_secret: 'secret' },
@@ -354,6 +366,26 @@ describe('uploadVideo', () => {
       [oneMiB, total],
       [total, total],
     ]);
+  });
+
+  it('reports the upload_id via onInit before sending chunks', async () => {
+    const oneMiB = 1024 * 1024;
+    const file = makeFile(oneMiB);
+    mockedPost.mockResolvedValueOnce({ headers: { location: '?upload_id=INIT7' } });
+    mockedPut.mockResolvedValueOnce({ status: 200, data: { video: { uuid: 'u-init' } } });
+
+    const seen: string[] = [];
+    const result = await uploadVideo({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+      onInit: (uploadId) => seen.push(uploadId),
+    });
+
+    expect(seen).toEqual(['INIT7']);
+    expect(result).toEqual({ uuid: 'u-init' });
   });
 
   it('retries the same offset on HTTP 413 and shrinks the chunk', async () => {

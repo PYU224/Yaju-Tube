@@ -116,7 +116,7 @@
         <ion-button
           expand="block"
           aria-label="start-upload"
-          :disabled="uploading"
+          :disabled="uploading || selectedChannelId === undefined"
           @click="onStartUpload"
         >
           <ion-icon
@@ -190,6 +190,8 @@ import {
   login,
   getMyAccount,
   uploadVideo,
+  cancelUpload,
+  normalizeHost,
   VIDEO_PRIVACY,
   PeerTubeAuthError,
 } from '@/api/peertube';
@@ -219,19 +221,23 @@ const progress = ref(0);
 const uploadedUuid = ref('');
 const uploadError = ref('');
 let abortController: AbortController | null = null;
+let currentUploadId: string | null = null;
 
 async function onLogin() {
   loginError.value = '';
   loggingIn.value = true;
+  // Persist the host without scheme/trailing slash so flows that re-prefix
+  // 'https://' (video player, listings) don't produce 'https://https://...'.
+  const normalizedHost = normalizeHost(host.value);
   try {
     const result = await login({
-      host: host.value,
+      host: normalizedHost,
       username: username.value,
       password: password.value,
       ...(otp.value ? { otpToken: otp.value } : {}),
     });
     const account = await getMyAccount({
-      host: host.value,
+      host: normalizedHost,
       token: result.accessToken,
     });
     authStore.setSession({
@@ -239,7 +245,7 @@ async function onLogin() {
       refreshToken: result.refreshToken,
       tokenType: result.tokenType,
       username: account.username,
-      host: host.value,
+      host: normalizedHost,
       channels: account.channels,
     });
     selectedChannelId.value = account.channels[0]?.id;
@@ -289,8 +295,14 @@ async function onStartUpload() {
 
     return;
   }
+  if (selectedChannelId.value === undefined) {
+    uploadError.value = t('upload.noChannels');
+
+    return;
+  }
 
   abortController = new AbortController();
+  currentUploadId = null;
   uploading.value = true;
   progress.value = 0;
   try {
@@ -299,15 +311,19 @@ async function onStartUpload() {
       token: authStore.accessToken as string,
       file: selectedFile.value,
       name: name.value,
-      channelId: selectedChannelId.value as number,
+      channelId: selectedChannelId.value,
       privacy: privacy.value,
       description: description.value,
       signal: abortController.signal,
+      onInit: (uploadId: string) => {
+        currentUploadId = uploadId;
+      },
       onProgress: (uploaded: number, total: number) => {
         progress.value = total ? uploaded / total : 0;
       },
     });
     uploadedUuid.value = result.uuid;
+    currentUploadId = null;
   } catch {
     uploadError.value = t('upload.failed');
   } finally {
@@ -317,6 +333,18 @@ async function onStartUpload() {
 
 function onCancel() {
   abortController?.abort();
+  // Best-effort: also discard the partial upload on the server so it does not
+  // linger consuming the account's upload quota/slot until it expires.
+  if (currentUploadId) {
+    void cancelUpload({
+      host: authStore.host as string,
+      token: authStore.accessToken as string,
+      uploadId: currentUploadId,
+    }).catch(() => {
+      // ignore — the local abort already stopped the upload
+    });
+    currentUploadId = null;
+  }
 }
 
 function onViewVideo() {

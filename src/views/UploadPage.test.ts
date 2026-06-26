@@ -107,6 +107,7 @@ async function mountUploadPage(setup?: (stores: {
 const mockedLogin = vi.mocked(peertube.login)
 const mockedGetMyAccount = vi.mocked(peertube.getMyAccount)
 const mockedUploadVideo = vi.mocked(peertube.uploadVideo)
+const mockedCancelUpload = vi.mocked(peertube.cancelUpload)
 
 describe('UploadPage', () => {
   beforeEach(() => {
@@ -243,6 +244,64 @@ describe('UploadPage', () => {
 
     expect(sessionStorage.getItem('tempInstanceUrl')).toBe('810video.com')
     expect(router.currentRoute.value.fullPath).toBe('/tabs/video/uuid-abc')
+  })
+
+  it('blocks upload and shows the no-channel message when the account has no channel', async () => {
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [],
+      })
+    })
+
+    expect(wrapper.text()).toContain(i18n.global.t('upload.noChannels'))
+    const startButton = wrapper.get('[aria-label="start-upload"]')
+    expect((startButton.element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('cancels the server-side upload when cancel is tapped mid-upload', async () => {
+    mockedCancelUpload.mockResolvedValue(undefined)
+    let resolveUpload!: (result: { uuid: string }) => void
+    mockedUploadVideo.mockImplementation((params) => {
+      params.onInit?.('UPID-1')
+
+      return new Promise((resolve) => {
+        resolveUpload = resolve
+      })
+    })
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+    })
+
+    const file = new File(['data'], 'clip.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    await wrapper.get('[aria-label="start-upload"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[aria-label="cancel-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedCancelUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ host: '810video.com', token: 'token', uploadId: 'UPID-1' }),
+    )
+
+    resolveUpload({ uuid: 'done' })
+    await flushPromises()
   })
 
   it('logs out and resets the store', async () => {

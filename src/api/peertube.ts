@@ -87,7 +87,11 @@ export async function login(p: {
       tokenType: res.data.token_type,
     };
   } catch (err) {
-    const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
+    // PeerTube reports its 2FA failures via `code` (e.g. missing_two_factor),
+    // while the OAuth2 layer reports bad credentials via the standard `error`
+    // field (e.g. invalid_grant). Check both so neither path is missed.
+    const data = (err as { response?: { data?: { code?: string; error?: string } } })?.response?.data;
+    const code = data?.code ?? data?.error;
     if (
       code === 'invalid_grant' ||
       code === 'missing_two_factor' ||
@@ -118,6 +122,9 @@ export interface UploadParams {
   privacy?: VideoPrivacy;
   description?: string;
   onProgress?: (uploaded: number, total: number) => void;
+  // Called once the resumable session is created, exposing its upload_id so the
+  // caller can cancel the server-side upload (cancelUpload) if it is aborted.
+  onInit?: (uploadId: string) => void;
   signal?: AbortSignal;
 }
 
@@ -200,6 +207,7 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
   if (p.privacy !== undefined) initParams.privacy = p.privacy;
   if (p.description !== undefined) initParams.description = p.description;
   const uploadId = await initResumableUpload(initParams);
+  if (p.onInit) p.onInit(uploadId);
 
   const url = apiBase(p.host) + '/videos/upload-resumable?upload_id=' + uploadId;
 
