@@ -9,6 +9,7 @@ const expectedRoutePaths = [
   '/tabs/tab3',
   '/tabs/tab4',
   '/tabs/tab5',
+  '/tabs/tab6',
   '/tabs/video/:videoId',
 ]
 
@@ -46,6 +47,7 @@ describe('router', () => {
     await expect(resolveLazyRoute('/tabs/tab3')).resolves.toBeTruthy()
     await expect(resolveLazyRoute('/tabs/tab4')).resolves.toBeTruthy()
     await expect(resolveLazyRoute('/tabs/tab5')).resolves.toBeTruthy()
+    await expect(resolveLazyRoute('/tabs/tab6')).resolves.toBeTruthy()
     await expect(resolveLazyRoute('/tabs/video/:videoId')).resolves.toBeTruthy()
   })
 })
