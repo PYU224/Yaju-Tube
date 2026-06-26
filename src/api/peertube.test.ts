@@ -373,6 +373,25 @@ describe('initResumableUpload', () => {
     expect(result).toEqual({ uploadId: 'EXIST1', existing: true });
   });
 
+  it('falls back to an upload id in the body when a 200 omits Location', async () => {
+    const file = makeFile(10);
+    mockedPost.mockResolvedValueOnce({
+      status: 200,
+      headers: {},
+      data: { id: 'BODYID' },
+    });
+
+    const result = await initResumableUpload({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+    });
+
+    expect(result).toEqual({ uploadId: 'BODYID', existing: true });
+  });
+
   it('defaults privacy to PUBLIC and omits description when not given', async () => {
     const file = makeFile(10);
     mockedPost.mockResolvedValueOnce({

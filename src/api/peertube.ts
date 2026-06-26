@@ -228,7 +228,16 @@ export async function initResumableUpload(p: {
 
   const resHeaders = (res.headers ?? {}) as Record<string, string>;
   const location: string = resHeaders['location'] ?? resHeaders['Location'] ?? '';
-  const uploadId = parseUploadId(location, p.host);
+  // uploadx returns the upload URL (carrying upload_id) in Location for both
+  // 201 (created) and 200 (existing). Fall back to an id in the response body
+  // for servers/proxies that omit Location on the 200 resume response.
+  const data = res.data ?? {};
+  const bodyId =
+    (typeof data.upload_id === 'string' && data.upload_id) ||
+    (typeof data.uploadId === 'string' && data.uploadId) ||
+    (typeof data.id === 'string' && data.id) ||
+    null;
+  const uploadId = parseUploadId(location, p.host) ?? bodyId;
   if (!uploadId) {
     throw new Error('Resumable upload init did not return an upload_id');
   }
