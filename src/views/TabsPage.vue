@@ -13,6 +13,11 @@
           <ion-label>Contents</ion-label>
         </ion-tab-button>
 
+        <ion-tab-button tab="tab6" href="/tabs/tab6">
+          <ion-icon :icon="cloudUpload" />
+          <ion-label>Upload</ion-label>
+        </ion-tab-button>
+
         <ion-tab-button tab="tab4" href="/tabs/tab4">
           <ion-icon :icon="time" />
           <ion-label>History</ion-label>
@@ -34,5 +39,5 @@
 
 <script setup lang="ts">
 import { IonTabBar, IonTabButton, IonTabs, IonLabel, IonIcon, IonPage, IonRouterOutlet } from '@ionic/vue';
-import { bookmarks, list, play, settings, time } from 'ionicons/icons';
+import { bookmarks, cloudUpload, list, play, settings, time } from 'ionicons/icons';
 </script>

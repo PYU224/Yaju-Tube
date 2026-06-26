@@ -89,5 +89,40 @@
     "networkError": "Network error: Unable to connect to server",
     "requestError": "Error occurred while configuring request",
     "unexpected": "An unexpected error occurred"
+  },
+  "auth": {
+    "loginTitle": "Log in",
+    "host": "Host",
+    "username": "Username",
+    "password": "Password",
+    "otp": "Two-factor code",
+    "login": "Log in",
+    "logout": "Log out",
+    "loggedInAs": "Logged in as {name}",
+    "invalidCredentials": "Invalid username or password",
+    "twoFactorRequired": "Two-factor code required",
+    "invalidTwoFactor": "Invalid two-factor code",
+    "networkError": "Network error: Unable to connect to server"
+  },
+  "upload": {
+    "title": "Upload Video",
+    "selectChannel": "Select channel",
+    "noChannels": "No channels available",
+    "selectFile": "Select file",
+    "videoName": "Video title",
+    "description": "Description",
+    "privacy": "Privacy",
+    "privacyPublic": "Public",
+    "privacyUnlisted": "Unlisted",
+    "privacyPrivate": "Private",
+    "privacyInternal": "Internal",
+    "start": "Start upload",
+    "cancel": "Cancel",
+    "uploading": "Uploading...",
+    "success": "Upload complete",
+    "viewVideo": "View video",
+    "failed": "Upload failed",
+    "selectFileFirst": "Please select a file first",
+    "nameRequired": "Please enter a video title"
   }
 }

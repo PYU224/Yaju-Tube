@@ -25,4 +25,65 @@ describe('authStore', () => {
     expect(store.accessToken).toBeNull()
     expect(store.getAccessToken).toBeNull()
   })
+
+  it('populates the session and reports logged in via setSession', () => {
+    const store = useAuthStore()
+
+    expect(store.isLoggedIn).toBe(false)
+
+    store.setSession({
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      tokenType: 'Bearer',
+      username: 'alice',
+      host: 'peertube.example',
+      channels: [{ id: 7, name: 'chan', displayName: 'Channel' }],
+    })
+
+    expect(store.accessToken).toBe('access-1')
+    expect(store.refreshToken).toBe('refresh-1')
+    expect(store.tokenType).toBe('Bearer')
+    expect(store.username).toBe('alice')
+    expect(store.host).toBe('peertube.example')
+    expect(store.channels).toEqual([{ id: 7, name: 'chan', displayName: 'Channel' }])
+    expect(store.isLoggedIn).toBe(true)
+  })
+
+  it('defaults refreshToken and tokenType to null in setSession', () => {
+    const store = useAuthStore()
+
+    store.setSession({
+      accessToken: 'access-2',
+      username: 'bob',
+      host: 'peertube.example',
+      channels: [],
+    })
+
+    expect(store.refreshToken).toBeNull()
+    expect(store.tokenType).toBeNull()
+    expect(store.isLoggedIn).toBe(true)
+  })
+
+  it('clears everything via logout', () => {
+    const store = useAuthStore()
+
+    store.setSession({
+      accessToken: 'access-3',
+      refreshToken: 'refresh-3',
+      tokenType: 'Bearer',
+      username: 'carol',
+      host: 'peertube.example',
+      channels: [{ id: 1, name: 'c', displayName: 'C' }],
+    })
+
+    store.logout()
+
+    expect(store.accessToken).toBeNull()
+    expect(store.refreshToken).toBeNull()
+    expect(store.tokenType).toBeNull()
+    expect(store.username).toBeNull()
+    expect(store.host).toBeNull()
+    expect(store.channels).toEqual([])
+    expect(store.isLoggedIn).toBe(false)
+  })
 })
