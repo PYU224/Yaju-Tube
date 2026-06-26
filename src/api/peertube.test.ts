@@ -58,10 +58,11 @@ afterEach(() => {
 });
 
 describe('normalizeHost / apiBase', () => {
-  it('strips protocol and trailing slashes', () => {
+  it('strips protocol and trailing slashes and lowercases the host', () => {
     expect(normalizeHost('https://peertube.example/')).toBe('peertube.example');
     expect(normalizeHost('http://peertube.example///')).toBe('peertube.example');
     expect(normalizeHost('peertube.example')).toBe('peertube.example');
+    expect(normalizeHost('https://PeerTube.Example/')).toBe('peertube.example');
   });
 
   it('builds an https api base', () => {

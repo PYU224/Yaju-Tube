@@ -257,6 +257,30 @@ describe('UploadPage', () => {
     expect(router.currentRoute.value.fullPath).toBe('/tabs/video/uuid-abc')
   })
 
+  it('rejects a video name shorter than 3 characters', async () => {
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+    })
+
+    // Basename defaults the title to a 2-character name.
+    const file = new File(['data'], 'ab.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', { value: [file], configurable: true })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    await wrapper.get('[aria-label="start-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedUploadVideo).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain(i18n.global.t('upload.nameLength'))
+  })
+
   it('blocks upload and shows the no-channel message when the account has no channel', async () => {
     const { wrapper } = await mountUploadPage(({ authStore }) => {
       authStore.setSession({
@@ -702,7 +726,7 @@ describe('UploadPage', () => {
       })
     })
 
-    const file = new File(['data'], 'a.mp4', { type: 'video/mp4' })
+    const file = new File(['data'], 'alice-clip.mp4', { type: 'video/mp4' })
     const fileInput = wrapper.get('[data-testid="file-input"]')
     Object.defineProperty(fileInput.element, 'files', { value: [file], configurable: true })
     await fileInput.trigger('change')

@@ -420,8 +420,16 @@ async function onStartUpload() {
 
     return;
   }
-  if (!name.value.trim()) {
+  const trimmedName = name.value.trim();
+  if (!trimmedName) {
     uploadError.value = t('upload.nameRequired');
+
+    return;
+  }
+  // PeerTube validates the video name as 3–120 characters; surface a specific
+  // message instead of letting the init request fail generically.
+  if (trimmedName.length < 3 || trimmedName.length > 120) {
+    uploadError.value = t('upload.nameLength');
 
     return;
   }

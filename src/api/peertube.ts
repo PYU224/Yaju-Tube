@@ -57,7 +57,9 @@ export class PeerTubeAuthError extends Error {
 }
 
 export function normalizeHost(host: string): string {
-  return host.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  // Hostnames are case-insensitive; canonicalize to lowercase so the same host
+  // entered with different casing maps to one session/pending-upload key.
+  return host.replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
 }
 
 export function apiBase(host: string): string {
