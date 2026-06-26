@@ -530,10 +530,7 @@ describe('UploadPage', () => {
     expect(wrapper.find('[aria-label="view-video"]').exists()).toBe(false)
   })
 
-  it('cancels a stale pending upload server-side when a new upload is started', async () => {
-    mockedCancelUpload.mockResolvedValue(undefined)
-    mockedUploadVideo.mockResolvedValue({ uuid: 'uuid-new' })
-
+  it('disables Start upload while a pending upload exists', async () => {
     const { wrapper } = await mountUploadPage(({ authStore }) => {
       authStore.setSession({
         accessToken: 'token',
@@ -556,7 +553,26 @@ describe('UploadPage', () => {
       })
     })
 
-    const file = new File(['data'], 'new.mp4', { type: 'video/mp4' })
+    // The user must Resume or Discard the pending upload before starting another.
+    expect((wrapper.get('[aria-label="start-upload"]').element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('disables logout while an upload is in progress', async () => {
+    let resolveUpload!: (result: { uuid: string }) => void
+    mockedUploadVideo.mockImplementation(
+      () => new Promise((resolve) => { resolveUpload = resolve }),
+    )
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+    })
+
+    const file = new File(['data'], 'clip.mp4', { type: 'video/mp4' })
     const fileInput = wrapper.get('[data-testid="file-input"]')
     Object.defineProperty(fileInput.element, 'files', { value: [file], configurable: true })
     await fileInput.trigger('change')
@@ -565,10 +581,47 @@ describe('UploadPage', () => {
     await wrapper.get('[aria-label="start-upload"]').trigger('click')
     await flushPromises()
 
+    expect((wrapper.get('[aria-label="logout"]').element as HTMLButtonElement).disabled).toBe(true)
+
+    resolveUpload({ uuid: 'uuid-done' })
+    await flushPromises()
+
+    expect((wrapper.get('[aria-label="logout"]').element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('keeps the pending upload when discard fails with a non-404 error', async () => {
+    mockedCancelUpload.mockRejectedValue({ response: { status: 500 } })
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+      useUploadStore().setPending({
+        host: '810video.com',
+        username: 'yaju',
+        uploadId: 'UP-KEEP',
+        name: 'Keep me',
+        channelId: 1,
+        privacy: VIDEO_PRIVACY.PUBLIC,
+        description: '',
+        fileName: 'k.mp4',
+        fileSize: 4,
+        fileLastModified: 1_700_000_000_000,
+        uploadedBytes: 2,
+      })
+    })
+
+    await wrapper.get('[aria-label="discard-upload"]').trigger('click')
+    await flushPromises()
+
     expect(mockedCancelUpload).toHaveBeenCalledWith(
-      expect.objectContaining({ uploadId: 'UP-OLD' }),
+      expect.objectContaining({ uploadId: 'UP-KEEP' }),
     )
-    expect(mockedUploadVideo).toHaveBeenCalled()
+    // Cancellation failed, so the banner stays for a retry.
+    expect(wrapper.find('[aria-label="resume-upload"]').exists()).toBe(true)
   })
 
   it('does not show a pending upload that belongs to a different account', async () => {

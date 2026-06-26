@@ -56,6 +56,7 @@
         <ion-button
           fill="outline"
           aria-label="logout"
+          :disabled="uploading"
           @click="onLogout"
         >
           <ion-icon
@@ -140,7 +141,7 @@
         <ion-button
           expand="block"
           aria-label="start-upload"
-          :disabled="uploading || selectedChannelId === undefined"
+          :disabled="uploading || selectedChannelId === undefined || pendingUpload !== null"
           @click="onStartUpload"
         >
           <ion-icon
@@ -386,6 +387,9 @@ async function ensureValidToken(): Promise<void> {
 }
 
 async function onStartUpload() {
+  // Re-entry guard: a double tap must not start two sessions. Start is also
+  // disabled while a pending upload exists (resolve it via Resume/Discard first).
+  if (uploading.value || pendingUpload.value) return;
   uploadError.value = '';
   uploadedUuid.value = '';
 
@@ -405,9 +409,20 @@ async function onStartUpload() {
     return;
   }
 
+  const file = selectedFile.value;
+  const channelId = selectedChannelId.value;
+  const uploadPrivacy = privacy.value;
+  abortController = new AbortController();
+  currentUploadId = null;
+  // Mark in-flight BEFORE the async refresh so the button disables immediately
+  // and a second tap can't enter here during the token refresh.
+  uploading.value = true;
+  progress.value = 0;
+
   try {
     await ensureValidToken();
   } catch {
+    uploading.value = false;
     authStore.logout();
     // After logout the template shows the login form, so surface the notice there.
     loginError.value = t('auth.sessionExpired');
@@ -415,27 +430,6 @@ async function onStartUpload() {
     return;
   }
 
-  // Starting a new upload while a previous one is still pending would overwrite
-  // its persisted record; cancel that orphaned server-side session first.
-  const stalePending = pendingUpload.value;
-  if (stalePending) {
-    void cancelUpload({
-      host: authStore.host as string,
-      token: authStore.accessToken as string,
-      uploadId: stalePending.uploadId,
-    }).catch(() => {
-      // ignore — the local record is replaced regardless
-    });
-    uploadStore.clearPending();
-  }
-
-  const file = selectedFile.value;
-  const channelId = selectedChannelId.value;
-  const uploadPrivacy = privacy.value;
-  abortController = new AbortController();
-  currentUploadId = null;
-  uploading.value = true;
-  progress.value = 0;
   try {
     const result = await uploadVideo({
       host: authStore.host as string,
@@ -479,6 +473,7 @@ async function onStartUpload() {
 }
 
 async function onResume() {
+  if (uploading.value) return;
   const pending = pendingUpload.value;
   const file = selectedFile.value;
   if (!pending || !file) return;
@@ -486,9 +481,17 @@ async function onResume() {
   uploadError.value = '';
   uploadedUuid.value = '';
 
+  abortController = new AbortController();
+  currentUploadId = pending.uploadId;
+  // Mark in-flight before the async refresh (mirrors onStartUpload).
+  uploading.value = true;
+  progress.value = pending.fileSize ? pending.uploadedBytes / pending.fileSize : 0;
+
   try {
     await ensureValidToken();
   } catch {
+    uploading.value = false;
+    currentUploadId = null;
     authStore.logout();
     // After logout the template shows the login form, so surface the notice there.
     loginError.value = t('auth.sessionExpired');
@@ -496,10 +499,6 @@ async function onResume() {
     return;
   }
 
-  abortController = new AbortController();
-  currentUploadId = pending.uploadId;
-  uploading.value = true;
-  progress.value = pending.fileSize ? pending.uploadedBytes / pending.fileSize : 0;
   try {
     const result = await resumeUpload({
       host: authStore.host as string,
@@ -523,18 +522,39 @@ async function onResume() {
   }
 }
 
-function discardPending() {
+async function discardPending() {
+  if (uploading.value) return;
   const pending = pendingUpload.value;
-  if (pending) {
-    void cancelUpload({
+  if (!pending) return;
+
+  // Refresh first so an expired token doesn't make the cancellation fail and
+  // strand the server-side session.
+  try {
+    await ensureValidToken();
+  } catch {
+    authStore.logout();
+    loginError.value = t('auth.sessionExpired');
+
+    return;
+  }
+
+  try {
+    await cancelUpload({
       host: authStore.host as string,
       token: authStore.accessToken as string,
       uploadId: pending.uploadId,
-    }).catch(() => {
-      // ignore — the local record is cleared regardless
     });
+    uploadStore.clearPending();
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      // Already gone server-side — safe to drop the local record.
+      uploadStore.clearPending();
+    } else {
+      // Keep the pending record so the user still has a resume/discard path.
+      uploadError.value = t('upload.failed');
+    }
   }
-  uploadStore.clearPending();
 }
 
 function onCancel() {
