@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { useUploadStore } from '@/stores/uploadStore'
 import type { VideoChannel } from '@/api/peertube'
 import { VIDEO_PRIVACY } from '@/api/peertube'
 import * as peertube from '@/api/peertube'
@@ -17,7 +18,9 @@ vi.mock('@/api/peertube', async (importOriginal) => {
     login: vi.fn(),
     getMyAccount: vi.fn(),
     uploadVideo: vi.fn(),
+    resumeUpload: vi.fn(),
     cancelUpload: vi.fn(),
+    refreshAccessToken: vi.fn(),
   }
 })
 
@@ -107,7 +110,9 @@ async function mountUploadPage(setup?: (stores: {
 const mockedLogin = vi.mocked(peertube.login)
 const mockedGetMyAccount = vi.mocked(peertube.getMyAccount)
 const mockedUploadVideo = vi.mocked(peertube.uploadVideo)
+const mockedResumeUpload = vi.mocked(peertube.resumeUpload)
 const mockedCancelUpload = vi.mocked(peertube.cancelUpload)
+const mockedRefresh = vi.mocked(peertube.refreshAccessToken)
 
 describe('UploadPage', () => {
   beforeEach(() => {
@@ -131,6 +136,8 @@ describe('UploadPage', () => {
       accessToken: 'token-123',
       refreshToken: 'refresh-123',
       tokenType: 'Bearer',
+      clientId: 'cid',
+      clientSecret: 'secret',
     })
     mockedGetMyAccount.mockResolvedValue({
       username: 'yaju',
@@ -302,6 +309,139 @@ describe('UploadPage', () => {
 
     resolveUpload({ uuid: 'done' })
     await flushPromises()
+  })
+
+  it('refreshes an expiring access token before uploading', async () => {
+    mockedRefresh.mockResolvedValue({
+      accessToken: 'fresh-token',
+      refreshToken: 'fresh-refresh',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+    })
+    mockedUploadVideo.mockResolvedValue({ uuid: 'uuid-refreshed' })
+
+    const { authStore, wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'stale-token',
+        refreshToken: 'r',
+        tokenType: 'Bearer',
+        clientId: 'cid',
+        clientSecret: 'secret',
+        expiresAt: 1, // already in the past -> refresh required
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+    })
+
+    const file = new File(['data'], 'clip.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    await wrapper.get('[aria-label="start-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedRefresh).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: '810video.com',
+        clientId: 'cid',
+        clientSecret: 'secret',
+        refreshToken: 'r',
+      }),
+    )
+    expect(authStore.accessToken).toBe('fresh-token')
+    expect(mockedUploadVideo).toHaveBeenCalledWith(
+      expect.objectContaining({ token: 'fresh-token' }),
+    )
+  })
+
+  it('resumes a pending upload once the matching file is re-selected', async () => {
+    mockedResumeUpload.mockResolvedValue({ uuid: 'resumed-uuid' })
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+      useUploadStore().setPending({
+        host: '810video.com',
+        uploadId: 'UP-RESUME',
+        name: 'Half done',
+        channelId: 1,
+        privacy: VIDEO_PRIVACY.PUBLIC,
+        description: '',
+        fileName: 'clip.mp4',
+        fileSize: 8,
+        uploadedBytes: 4,
+      })
+    })
+
+    const resumeButton = wrapper.get('[aria-label="resume-upload"]')
+    // resume stays disabled until the same file (name + size) is provided
+    expect((resumeButton.element as HTMLButtonElement).disabled).toBe(true)
+
+    const file = new File([new Uint8Array(8)], 'clip.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    expect((wrapper.get('[aria-label="resume-upload"]').element as HTMLButtonElement).disabled).toBe(false)
+
+    await wrapper.get('[aria-label="resume-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedResumeUpload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: '810video.com',
+        token: 'token',
+        uploadId: 'UP-RESUME',
+        file,
+      }),
+    )
+    expect(wrapper.text()).toContain(i18n.global.t('upload.success'))
+  })
+
+  it('discards a pending upload server-side and hides the resume banner', async () => {
+    mockedCancelUpload.mockResolvedValue(undefined)
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+      useUploadStore().setPending({
+        host: '810video.com',
+        uploadId: 'UP-DISCARD',
+        name: 'X',
+        channelId: 1,
+        privacy: VIDEO_PRIVACY.PUBLIC,
+        description: '',
+        fileName: 'a.mp4',
+        fileSize: 10,
+        uploadedBytes: 5,
+      })
+    })
+
+    await wrapper.get('[aria-label="discard-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedCancelUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: 'UP-DISCARD' }),
+    )
+    expect(wrapper.find('[aria-label="resume-upload"]').exists()).toBe(false)
   })
 
   it('logs out and resets the store', async () => {

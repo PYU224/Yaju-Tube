@@ -65,6 +65,30 @@
           {{ $t('auth.logout') }}
         </ion-button>
 
+        <div
+          v-if="pendingUpload && !uploadedUuid"
+          class="resume-banner"
+        >
+          <p>{{ $t('upload.resumeNotice', { name: pendingUpload.name }) }}</p>
+          <ion-button
+            size="small"
+            aria-label="resume-upload"
+            :disabled="uploading || !canResume"
+            @click="onResume"
+          >
+            {{ $t('upload.resume') }}
+          </ion-button>
+          <ion-button
+            size="small"
+            color="medium"
+            aria-label="discard-upload"
+            :disabled="uploading"
+            @click="discardPending"
+          >
+            {{ $t('upload.discard') }}
+          </ion-button>
+        </div>
+
         <ion-list>
           <ion-item v-if="authStore.channels.length > 0">
             <ion-label position="stacked">{{ $t('upload.selectChannel') }}</ion-label>
@@ -181,16 +205,19 @@ import {
   IonProgressBar,
 } from '@ionic/vue';
 import { cloudUpload, logOut } from 'ionicons/icons';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import { useInstanceStore } from '@/stores/instanceStore';
+import { useUploadStore } from '@/stores/uploadStore';
 import {
   login,
   getMyAccount,
   uploadVideo,
+  resumeUpload,
   cancelUpload,
+  refreshAccessToken,
   normalizeHost,
   VIDEO_PRIVACY,
   PeerTubeAuthError,
@@ -199,8 +226,12 @@ import type { VideoPrivacy } from '@/api/peertube';
 
 const authStore = useAuthStore();
 const instanceStore = useInstanceStore();
+const uploadStore = useUploadStore();
 const router = useRouter();
 const { t } = useI18n();
+
+// 30 秒のマージンを持って期限切れ前にトークンを更新
+const TOKEN_REFRESH_MARGIN_MS = 30 * 1000;
 
 // ログインフォームの状態
 const host = ref(instanceStore.selectedInstanceUrl);
@@ -244,6 +275,9 @@ async function onLogin() {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
       tokenType: result.tokenType,
+      clientId: result.clientId,
+      clientSecret: result.clientSecret,
+      expiresAt: result.expiresIn ? Date.now() + result.expiresIn * 1000 : null,
       username: account.username,
       host: normalizedHost,
       channels: account.channels,
@@ -272,13 +306,64 @@ function onLogout() {
   authStore.logout();
 }
 
+// 現在ログイン中のインスタンスに紐づく、未完了のアップロード
+const pendingUpload = computed(() =>
+  uploadStore.pending && uploadStore.pending.host === authStore.host
+    ? uploadStore.pending
+    : null,
+);
+
+// 再開には、中断時と同じファイル(名前・サイズ一致)の再選択が必要
+const canResume = computed(() => {
+  const p = pendingUpload.value;
+  const f = selectedFile.value;
+  return !!p && !!f && f.name === p.fileName && f.size === p.fileSize;
+});
+
+// 再開対象がある場合は、保存済みのメタデータをフォームへ復元する
+if (pendingUpload.value) {
+  name.value = pendingUpload.value.name;
+  description.value = pendingUpload.value.description;
+  privacy.value = pendingUpload.value.privacy as VideoPrivacy;
+  selectedChannelId.value = pendingUpload.value.channelId;
+}
+
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0] ?? null;
   selectedFile.value = file;
-  if (file) {
+  // 再開待ちのときは保存済みタイトルを尊重し、上書きしない
+  if (file && !pendingUpload.value) {
     name.value = file.name.replace(/\.[^/.]+$/, '');
   }
+}
+
+// 期限切れが近ければリフレッシュトークンでアクセストークンを更新する。
+// 失敗時は呼び出し側で再ログインを促す。
+async function ensureValidToken(): Promise<void> {
+  const { expiresAt, clientId, clientSecret, refreshToken, host: sessionHost } = authStore;
+  if (
+    !expiresAt ||
+    Date.now() <= expiresAt - TOKEN_REFRESH_MARGIN_MS ||
+    !clientId ||
+    !clientSecret ||
+    !refreshToken ||
+    !sessionHost
+  ) {
+    return;
+  }
+  const refreshed = await refreshAccessToken({
+    host: sessionHost,
+    clientId,
+    clientSecret,
+    refreshToken,
+  });
+  authStore.applyRefresh({
+    accessToken: refreshed.accessToken,
+    refreshToken: refreshed.refreshToken,
+    tokenType: refreshed.tokenType,
+    expiresAt: refreshed.expiresIn ? Date.now() + refreshed.expiresIn * 1000 : null,
+  });
 }
 
 async function onStartUpload() {
@@ -301,6 +386,18 @@ async function onStartUpload() {
     return;
   }
 
+  try {
+    await ensureValidToken();
+  } catch {
+    authStore.logout();
+    // After logout the template shows the login form, so surface the notice there.
+    loginError.value = t('auth.sessionExpired');
+
+    return;
+  }
+
+  const file = selectedFile.value;
+  const channelId = selectedChannelId.value;
   abortController = new AbortController();
   currentUploadId = null;
   uploading.value = true;
@@ -309,26 +406,97 @@ async function onStartUpload() {
     const result = await uploadVideo({
       host: authStore.host as string,
       token: authStore.accessToken as string,
-      file: selectedFile.value,
+      file,
       name: name.value,
-      channelId: selectedChannelId.value,
+      channelId,
       privacy: privacy.value,
       description: description.value,
       signal: abortController.signal,
       onInit: (uploadId: string) => {
         currentUploadId = uploadId;
+        uploadStore.setPending({
+          host: authStore.host as string,
+          uploadId,
+          name: name.value,
+          channelId,
+          privacy: privacy.value,
+          description: description.value,
+          fileName: file.name,
+          fileSize: file.size,
+          uploadedBytes: 0,
+        });
       },
       onProgress: (uploaded: number, total: number) => {
         progress.value = total ? uploaded / total : 0;
+        uploadStore.updateProgress(uploaded);
       },
     });
     uploadedUuid.value = result.uuid;
+    uploadStore.clearPending();
     currentUploadId = null;
   } catch {
     uploadError.value = t('upload.failed');
   } finally {
     uploading.value = false;
   }
+}
+
+async function onResume() {
+  const pending = pendingUpload.value;
+  const file = selectedFile.value;
+  if (!pending || !file) return;
+
+  uploadError.value = '';
+  uploadedUuid.value = '';
+
+  try {
+    await ensureValidToken();
+  } catch {
+    authStore.logout();
+    // After logout the template shows the login form, so surface the notice there.
+    loginError.value = t('auth.sessionExpired');
+
+    return;
+  }
+
+  abortController = new AbortController();
+  currentUploadId = pending.uploadId;
+  uploading.value = true;
+  progress.value = pending.fileSize ? pending.uploadedBytes / pending.fileSize : 0;
+  try {
+    const result = await resumeUpload({
+      host: authStore.host as string,
+      token: authStore.accessToken as string,
+      file,
+      uploadId: pending.uploadId,
+      signal: abortController.signal,
+      onProgress: (uploaded: number, total: number) => {
+        progress.value = total ? uploaded / total : 0;
+        uploadStore.updateProgress(uploaded);
+      },
+    });
+    uploadedUuid.value = result.uuid;
+    uploadStore.clearPending();
+    currentUploadId = null;
+  } catch {
+    uploadError.value = t('upload.failed');
+  } finally {
+    uploading.value = false;
+  }
+}
+
+function discardPending() {
+  const pending = pendingUpload.value;
+  if (pending) {
+    void cancelUpload({
+      host: authStore.host as string,
+      token: authStore.accessToken as string,
+      uploadId: pending.uploadId,
+    }).catch(() => {
+      // ignore — the local record is cleared regardless
+    });
+  }
+  uploadStore.clearPending();
 }
 
 function onCancel() {
@@ -345,6 +513,7 @@ function onCancel() {
     });
     currentUploadId = null;
   }
+  uploadStore.clearPending();
 }
 
 function onViewVideo() {
@@ -374,6 +543,17 @@ function onViewVideo() {
 .logged-in-as {
   margin-bottom: 0.5rem;
   font-weight: 600;
+}
+
+.resume-banner {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--ion-color-warning);
+  border-radius: 4px;
+}
+
+.resume-banner p {
+  margin: 0 0 0.5rem;
 }
 
 ion-progress-bar {

@@ -102,7 +102,8 @@
     "invalidCredentials": "ユーザー名またはパスワードが正しくありません",
     "twoFactorRequired": "二段階認証コードが必要です",
     "invalidTwoFactor": "二段階認証コードが正しくありません",
-    "networkError": "ネットワークエラー: サーバーに接続できません"
+    "networkError": "ネットワークエラー: サーバーに接続できません",
+    "sessionExpired": "セッションの有効期限が切れました。再度ログインしてください"
   },
   "upload": {
     "title": "動画をアップロード",
@@ -123,6 +124,9 @@
     "viewVideo": "動画を見る",
     "failed": "アップロードに失敗しました",
     "selectFileFirst": "先にファイルを選択してください",
-    "nameRequired": "動画タイトルを入力してください"
+    "nameRequired": "動画タイトルを入力してください",
+    "resumeNotice": "中断されたアップロード「{name}」があります。同じ動画ファイルを選択して再開してください",
+    "resume": "再開",
+    "discard": "破棄"
   }
 }

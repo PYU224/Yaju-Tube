@@ -64,6 +64,41 @@ describe('authStore', () => {
     expect(store.isLoggedIn).toBe(true)
   })
 
+  it('stores client credentials and expiry, then refreshes tokens via applyRefresh', () => {
+    const store = useAuthStore()
+
+    store.setSession({
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      tokenType: 'Bearer',
+      clientId: 'cid',
+      clientSecret: 'secret',
+      expiresAt: 1000,
+      username: 'alice',
+      host: 'peertube.example',
+      channels: [],
+    })
+
+    expect(store.clientId).toBe('cid')
+    expect(store.clientSecret).toBe('secret')
+    expect(store.expiresAt).toBe(1000)
+
+    store.applyRefresh({
+      accessToken: 'access-2',
+      refreshToken: 'refresh-2',
+      tokenType: 'Bearer',
+      expiresAt: 5000,
+    })
+
+    expect(store.accessToken).toBe('access-2')
+    expect(store.refreshToken).toBe('refresh-2')
+    expect(store.expiresAt).toBe(5000)
+    // credentials are preserved across a refresh
+    expect(store.clientId).toBe('cid')
+    expect(store.clientSecret).toBe('secret')
+    expect(store.isLoggedIn).toBe(true)
+  })
+
   it('clears everything via logout', () => {
     const store = useAuthStore()
 
@@ -71,6 +106,9 @@ describe('authStore', () => {
       accessToken: 'access-3',
       refreshToken: 'refresh-3',
       tokenType: 'Bearer',
+      clientId: 'cid',
+      clientSecret: 'secret',
+      expiresAt: 1000,
       username: 'carol',
       host: 'peertube.example',
       channels: [{ id: 1, name: 'c', displayName: 'C' }],
@@ -84,6 +122,9 @@ describe('authStore', () => {
     expect(store.username).toBeNull()
     expect(store.host).toBeNull()
     expect(store.channels).toEqual([])
+    expect(store.clientId).toBeNull()
+    expect(store.clientSecret).toBeNull()
+    expect(store.expiresAt).toBeNull()
     expect(store.isLoggedIn).toBe(false)
   })
 })

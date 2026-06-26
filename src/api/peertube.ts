@@ -11,6 +11,19 @@ export interface LoginResult {
   accessToken: string;
   refreshToken: string;
   tokenType: string;
+  // OAuth client credentials are returned so the session can later refresh the
+  // access token without re-fetching them from the instance.
+  clientId: string;
+  clientSecret: string;
+  // Access-token lifetime in seconds (PeerTube `expires_in`), when provided.
+  expiresIn?: number;
+}
+
+export interface RefreshResult {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresIn?: number;
 }
 
 export interface VideoChannel {
@@ -81,11 +94,15 @@ export async function login(p: {
 
   try {
     const res = await axios.post(apiBase(p.host) + '/users/token', body, { headers });
-    return {
+    const result: LoginResult = {
       accessToken: res.data.access_token,
       refreshToken: res.data.refresh_token,
       tokenType: res.data.token_type,
+      clientId: client.client_id,
+      clientSecret: client.client_secret,
     };
+    if (res.data.expires_in !== undefined) result.expiresIn = res.data.expires_in;
+    return result;
   } catch (err) {
     // PeerTube reports its 2FA failures via `code` (e.g. missing_two_factor),
     // while the OAuth2 layer reports bad credentials via the standard `error`
@@ -101,6 +118,31 @@ export async function login(p: {
     }
     throw err;
   }
+}
+
+export async function refreshAccessToken(p: {
+  host: string;
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+}): Promise<RefreshResult> {
+  const body = new URLSearchParams();
+  body.append('client_id', p.clientId);
+  body.append('client_secret', p.clientSecret);
+  body.append('grant_type', 'refresh_token');
+  body.append('refresh_token', p.refreshToken);
+
+  const res = await axios.post(apiBase(p.host) + '/users/token', body, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+
+  const result: RefreshResult = {
+    accessToken: res.data.access_token,
+    refreshToken: res.data.refresh_token,
+    tokenType: res.data.token_type,
+  };
+  if (res.data.expires_in !== undefined) result.expiresIn = res.data.expires_in;
+  return result;
 }
 
 export async function getMyAccount(p: { host: string; token: string }): Promise<MyAccount> {
@@ -187,43 +229,36 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
-  const total = p.file.size;
-  const initParams: {
-    host: string;
-    token: string;
-    file: File;
-    name: string;
-    channelId: number;
-    privacy?: VideoPrivacy;
-    description?: string;
-  } = {
-    host: p.host,
-    token: p.token,
-    file: p.file,
-    name: p.name,
-    channelId: p.channelId,
-  };
-  if (p.privacy !== undefined) initParams.privacy = p.privacy;
-  if (p.description !== undefined) initParams.description = p.description;
-  const uploadId = await initResumableUpload(initParams);
-  if (p.onInit) p.onInit(uploadId);
+interface ChunkLoopOptions {
+  host: string;
+  token: string;
+  uploadId: string;
+  file: File;
+  startOffset?: number;
+  onProgress?: (uploaded: number, total: number) => void;
+  signal?: AbortSignal;
+}
 
-  const url = apiBase(p.host) + '/videos/upload-resumable?upload_id=' + uploadId;
+// Streams a file to an already-initialised resumable upload session in
+// dynamically-sized chunks, starting from startOffset. Shared by uploadVideo
+// (fresh upload) and resumeUpload (continuing an interrupted one).
+async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
+  const total = opts.file.size;
+  const url = apiBase(opts.host) + '/videos/upload-resumable?upload_id=' + opts.uploadId;
 
   let chunkSize = CHUNK_START;
   let maxChunkSize = CHUNK_MAX_DEFAULT;
-  let start = 0;
+  let start = opts.startOffset ?? 0;
   let uuid: string | undefined;
 
   while (start < total) {
-    if (p.signal?.aborted) {
+    if (opts.signal?.aborted) {
       throw new DOMException('Upload aborted', 'AbortError');
     }
 
     const size = Math.min(chunkSize, total - start);
     const end = start + size;
-    const blob = p.file.slice(start, end);
+    const blob = opts.file.slice(start, end);
 
     const startedAt = Date.now();
     try {
@@ -231,11 +266,11 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
         headers: {
           'Content-Type': 'application/octet-stream',
           'Content-Range': 'bytes ' + start + '-' + (end - 1) + '/' + total,
-          Authorization: 'Bearer ' + p.token,
+          Authorization: 'Bearer ' + opts.token,
         },
         validateStatus: (s: number) => s === 200 || s === 308,
       };
-      if (p.signal) config.signal = p.signal;
+      if (opts.signal) config.signal = opts.signal;
       const res = await axios.put(url, blob, config);
 
       const elapsedMs = Date.now() - startedAt;
@@ -245,7 +280,7 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
       }
 
       start = end;
-      if (p.onProgress) p.onProgress(end, total);
+      if (opts.onProgress) opts.onProgress(end, total);
 
       // Dynamic chunk sizing
       if (elapsedMs < 8000) {
@@ -269,6 +304,108 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
   if (!uuid) {
     throw new Error('Upload finished without a video UUID');
   }
+  return uuid;
+}
+
+export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
+  const initParams: {
+    host: string;
+    token: string;
+    file: File;
+    name: string;
+    channelId: number;
+    privacy?: VideoPrivacy;
+    description?: string;
+  } = {
+    host: p.host,
+    token: p.token,
+    file: p.file,
+    name: p.name,
+    channelId: p.channelId,
+  };
+  if (p.privacy !== undefined) initParams.privacy = p.privacy;
+  if (p.description !== undefined) initParams.description = p.description;
+  const uploadId = await initResumableUpload(initParams);
+  if (p.onInit) p.onInit(uploadId);
+
+  const loopOpts: ChunkLoopOptions = {
+    host: p.host,
+    token: p.token,
+    uploadId,
+    file: p.file,
+  };
+  if (p.onProgress) loopOpts.onProgress = p.onProgress;
+  if (p.signal) loopOpts.signal = p.signal;
+
+  const uuid = await runChunkLoop(loopOpts);
+  return { uuid };
+}
+
+// Asks the server how many bytes it already holds for an interrupted upload by
+// sending an empty `Content-Range: bytes */total` probe, mirroring the
+// reference app's resumeUpload. Returns the next byte offset to send from.
+export async function getResumeOffset(p: {
+  host: string;
+  token: string;
+  uploadId: string;
+  fileSize: number;
+}): Promise<number> {
+  const res = await axios.put(
+    apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId,
+    undefined,
+    {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Range': 'bytes */' + p.fileSize,
+        Authorization: 'Bearer ' + p.token,
+      },
+      validateStatus: (s: number) => s === 200 || s === 201 || s === 308,
+    },
+  );
+
+  const headers = (res.headers ?? {}) as Record<string, string>;
+  const range = headers['range'] ?? headers['Range'];
+  if (typeof range === 'string') {
+    const m = /bytes=0-(\d+)/.exec(range);
+    if (m && m[1] !== undefined) {
+      return parseInt(m[1], 10) + 1;
+    }
+  }
+  // 200/201 means the server already has the whole file.
+  if (res.status === 200 || res.status === 201) {
+    return p.fileSize;
+  }
+  return 0;
+}
+
+export interface ResumeParams {
+  host: string;
+  token: string;
+  file: File;
+  uploadId: string;
+  onProgress?: (uploaded: number, total: number) => void;
+  signal?: AbortSignal;
+}
+
+export async function resumeUpload(p: ResumeParams): Promise<UploadResult> {
+  const startOffset = await getResumeOffset({
+    host: p.host,
+    token: p.token,
+    uploadId: p.uploadId,
+    fileSize: p.file.size,
+  });
+
+  const loopOpts: ChunkLoopOptions = {
+    host: p.host,
+    token: p.token,
+    uploadId: p.uploadId,
+    file: p.file,
+    startOffset,
+  };
+  if (p.onProgress) loopOpts.onProgress = p.onProgress;
+  if (p.signal) loopOpts.signal = p.signal;
+
+  const uuid = await runChunkLoop(loopOpts);
   return { uuid };
 }
 

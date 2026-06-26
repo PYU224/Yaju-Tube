@@ -102,7 +102,8 @@
     "invalidCredentials": "Ungültiger Benutzername oder Passwort",
     "twoFactorRequired": "Zwei-Faktor-Code erforderlich",
     "invalidTwoFactor": "Ungültiger Zwei-Faktor-Code",
-    "networkError": "Netzwerkfehler: Verbindung zum Server nicht möglich"
+    "networkError": "Netzwerkfehler: Verbindung zum Server nicht möglich",
+    "sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte erneut anmelden"
   },
   "upload": {
     "title": "Video hochladen",
@@ -123,6 +124,9 @@
     "viewVideo": "Video ansehen",
     "failed": "Hochladen fehlgeschlagen",
     "selectFileFirst": "Bitte zuerst eine Datei auswählen",
-    "nameRequired": "Bitte einen Videotitel eingeben"
+    "nameRequired": "Bitte einen Videotitel eingeben",
+    "resumeNotice": "Es gibt einen unterbrochenen Upload „{name}“. Wählen Sie dieselbe Videodatei, um fortzufahren",
+    "resume": "Fortsetzen",
+    "discard": "Verwerfen"
   }
 }

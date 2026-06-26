@@ -6,10 +6,13 @@ import {
   cancelUpload,
   getMyAccount,
   getOAuthClient,
+  getResumeOffset,
   initResumableUpload,
   login,
   normalizeHost,
   PeerTubeAuthError,
+  refreshAccessToken,
+  resumeUpload,
   updateVideo,
   uploadVideo,
   VIDEO_PRIVACY,
@@ -110,6 +113,8 @@ describe('login', () => {
       accessToken: 'access',
       refreshToken: 'refresh',
       tokenType: 'Bearer',
+      clientId: 'cid',
+      clientSecret: 'secret',
     });
 
     const [url, bodyArg, config] = callArgs(mockedPost, 0);
@@ -122,6 +127,26 @@ describe('login', () => {
     expect(body.get('password')).toBe('pw');
     expect(config.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
     expect(config.headers['x-peertube-otp']).toBeUndefined();
+  });
+
+  it('returns expiresIn and client credentials when present', async () => {
+    mockedGet.mockResolvedValueOnce({
+      data: { client_id: 'cid', client_secret: 'secret' },
+    });
+    mockedPost.mockResolvedValueOnce({
+      data: {
+        access_token: 'a',
+        refresh_token: 'r',
+        token_type: 'Bearer',
+        expires_in: 3600,
+      },
+    });
+
+    const result = await login({ host: 'peertube.example', username: 'a', password: 'b' });
+
+    expect(result.clientId).toBe('cid');
+    expect(result.clientSecret).toBe('secret');
+    expect(result.expiresIn).toBe(3600);
   });
 
   it('sends the otp header when provided', async () => {
@@ -193,6 +218,42 @@ describe('login', () => {
     await expect(
       login({ host: 'peertube.example', username: 'a', password: 'b' }),
     ).rejects.toBe(networkErr);
+  });
+});
+
+describe('refreshAccessToken', () => {
+  it('posts a refresh_token grant and returns the new tokens', async () => {
+    mockedPost.mockResolvedValueOnce({
+      data: {
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+        token_type: 'Bearer',
+        expires_in: 7200,
+      },
+    });
+
+    const result = await refreshAccessToken({
+      host: 'peertube.example',
+      clientId: 'cid',
+      clientSecret: 'secret',
+      refreshToken: 'old-refresh',
+    });
+
+    expect(result).toEqual({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      tokenType: 'Bearer',
+      expiresIn: 7200,
+    });
+
+    const [url, bodyArg, config] = callArgs(mockedPost, 0);
+    expect(url).toBe('https://peertube.example/api/v1/users/token');
+    const body = bodyArg as URLSearchParams;
+    expect(body.get('grant_type')).toBe('refresh_token');
+    expect(body.get('refresh_token')).toBe('old-refresh');
+    expect(body.get('client_id')).toBe('cid');
+    expect(body.get('client_secret')).toBe('secret');
+    expect(config.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
   });
 });
 
@@ -479,6 +540,92 @@ describe('uploadVideo', () => {
         channelId: 1,
       }),
     ).rejects.toBe(boom);
+  });
+});
+
+describe('getResumeOffset', () => {
+  it('probes with bytes */size and returns the next byte from the Range header', async () => {
+    const size = 1024 * 1024;
+    const have = 512 * 1024;
+    mockedPut.mockResolvedValueOnce({
+      status: 308,
+      headers: { range: `bytes=0-${have - 1}` },
+      data: {},
+    });
+
+    const offset = await getResumeOffset({
+      host: 'peertube.example',
+      token: 'tok',
+      uploadId: 'UPR',
+      fileSize: size,
+    });
+
+    expect(offset).toBe(have);
+
+    const [url, body, config] = callArgs(mockedPut, 0);
+    expect(url).toBe('https://peertube.example/api/v1/videos/upload-resumable?upload_id=UPR');
+    expect(body).toBeUndefined();
+    expect(config.headers['Content-Range']).toBe(`bytes */${size}`);
+  });
+
+  it('returns the full size when the server reports the upload complete (200)', async () => {
+    const size = 4096;
+    mockedPut.mockResolvedValueOnce({ status: 200, headers: {}, data: {} });
+
+    const offset = await getResumeOffset({
+      host: 'peertube.example',
+      token: 'tok',
+      uploadId: 'UPR2',
+      fileSize: size,
+    });
+
+    expect(offset).toBe(size);
+  });
+
+  it('returns 0 when there is no Range header on a 308', async () => {
+    mockedPut.mockResolvedValueOnce({ status: 308, headers: {}, data: {} });
+
+    const offset = await getResumeOffset({
+      host: 'peertube.example',
+      token: 'tok',
+      uploadId: 'UPR3',
+      fileSize: 4096,
+    });
+
+    expect(offset).toBe(0);
+  });
+});
+
+describe('resumeUpload', () => {
+  it('continues from the server offset and returns the uuid', async () => {
+    const total = 1024 * 1024;
+    const have = 512 * 1024;
+    const file = makeFile(total);
+
+    // First PUT is the resume probe, then the remaining chunk completes.
+    mockedPut
+      .mockResolvedValueOnce({ status: 308, headers: { range: `bytes=0-${have - 1}` }, data: {} })
+      .mockResolvedValueOnce({ status: 200, data: { video: { uuid: 'resumed' } } });
+
+    const progress: Array<[number, number]> = [];
+    const result = await resumeUpload({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      uploadId: 'UPR',
+      onProgress: (u, t) => progress.push([u, t]),
+    });
+
+    expect(result).toEqual({ uuid: 'resumed' });
+    expect(mockedPut).toHaveBeenCalledTimes(2);
+
+    // probe
+    expect(callArgs(mockedPut, 0)[2].headers['Content-Range']).toBe(`bytes */${total}`);
+    // remaining chunk continues from the reported offset
+    const chunk = callArgs(mockedPut, 1);
+    expect(chunk[2].headers['Content-Range']).toBe(`bytes ${have}-${total - 1}/${total}`);
+    expect((chunk[1] as Blob).size).toBe(total - have);
+    expect(progress).toEqual([[total, total]]);
   });
 });
 
