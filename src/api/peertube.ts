@@ -106,15 +106,16 @@ export async function login(p: {
   } catch (err) {
     // PeerTube reports its 2FA failures via `code` (e.g. missing_two_factor),
     // while the OAuth2 layer reports bad credentials via the standard `error`
-    // field (e.g. invalid_grant). Check both so neither path is missed.
-    const data = (err as { response?: { data?: { code?: string; error?: string } } })?.response?.data;
-    const code = data?.code ?? data?.error;
-    if (
-      code === 'invalid_grant' ||
-      code === 'missing_two_factor' ||
-      code === 'invalid_two_factor'
-    ) {
-      throw new PeerTubeAuthError(code);
+    // field (e.g. invalid_grant). Either field may also carry an unrelated
+    // value (a numeric HTTP code, a message), so match the known auth code in
+    // whichever field actually holds it rather than preferring one.
+    const data = (err as { response?: { data?: { code?: unknown; error?: unknown } } })?.response?.data;
+    const authCode = [data?.code, data?.error].find(
+      (c): c is string =>
+        c === 'invalid_grant' || c === 'missing_two_factor' || c === 'invalid_two_factor',
+    );
+    if (authCode) {
+      throw new PeerTubeAuthError(authCode);
     }
     throw err;
   }
@@ -341,15 +342,23 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
   return { uuid };
 }
 
+export interface ResumeProbe {
+  // Next byte offset the client should send from.
+  offset: number;
+  // Present when the probe reports the upload already complete (200/201): the
+  // server returns the finished video, so there is nothing left to send.
+  uuid?: string;
+}
+
 // Asks the server how many bytes it already holds for an interrupted upload by
 // sending an empty `Content-Range: bytes */total` probe, mirroring the
-// reference app's resumeUpload. Returns the next byte offset to send from.
+// reference app's resumeUpload.
 export async function getResumeOffset(p: {
   host: string;
   token: string;
   uploadId: string;
   fileSize: number;
-}): Promise<number> {
+}): Promise<ResumeProbe> {
   const res = await axios.put(
     apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId,
     undefined,
@@ -368,14 +377,17 @@ export async function getResumeOffset(p: {
   if (typeof range === 'string') {
     const m = /bytes=0-(\d+)/.exec(range);
     if (m && m[1] !== undefined) {
-      return parseInt(m[1], 10) + 1;
+      return { offset: parseInt(m[1], 10) + 1 };
     }
   }
-  // 200/201 means the server already has the whole file.
+  // 200/201 means the server already has the whole file and returns the video.
   if (res.status === 200 || res.status === 201) {
-    return p.fileSize;
+    const result: ResumeProbe = { offset: p.fileSize };
+    const uuid = res.data?.video?.uuid;
+    if (uuid) result.uuid = uuid;
+    return result;
   }
-  return 0;
+  return { offset: 0 };
 }
 
 export interface ResumeParams {
@@ -388,19 +400,30 @@ export interface ResumeParams {
 }
 
 export async function resumeUpload(p: ResumeParams): Promise<UploadResult> {
-  const startOffset = await getResumeOffset({
+  const probe = await getResumeOffset({
     host: p.host,
     token: p.token,
     uploadId: p.uploadId,
     fileSize: p.file.size,
   });
 
+  // The server already has the whole file (e.g. we crashed right after the
+  // final chunk was stored): complete using the uuid it reported instead of
+  // entering the chunk loop with nothing left to send.
+  if (probe.offset >= p.file.size) {
+    if (!probe.uuid) {
+      throw new Error('Upload finished without a video UUID');
+    }
+    if (p.onProgress) p.onProgress(p.file.size, p.file.size);
+    return { uuid: probe.uuid };
+  }
+
   const loopOpts: ChunkLoopOptions = {
     host: p.host,
     token: p.token,
     uploadId: p.uploadId,
     file: p.file,
-    startOffset,
+    startOffset: probe.offset,
   };
   if (p.onProgress) loopOpts.onProgress = p.onProgress;
   if (p.signal) loopOpts.signal = p.signal;

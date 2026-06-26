@@ -208,6 +208,20 @@ describe('login', () => {
     ).rejects.toMatchObject({ name: 'PeerTubeAuthError', code: 'invalid_grant' });
   });
 
+  it('matches the auth code in `error` even when `code` holds an unrelated HTTP code', async () => {
+    mockedGet.mockResolvedValueOnce({
+      data: { client_id: 'cid', client_secret: 'secret' },
+    });
+    // `code` is a numeric HTTP status while the OAuth failure is in `error`.
+    mockedPost.mockRejectedValueOnce({
+      response: { data: { code: 400, error: 'invalid_grant' } },
+    });
+
+    await expect(
+      login({ host: 'peertube.example', username: 'a', password: 'b' }),
+    ).rejects.toMatchObject({ name: 'PeerTubeAuthError', code: 'invalid_grant' });
+  });
+
   it('rethrows non-auth errors untouched', async () => {
     mockedGet.mockResolvedValueOnce({
       data: { client_id: 'cid', client_secret: 'secret' },
@@ -553,14 +567,15 @@ describe('getResumeOffset', () => {
       data: {},
     });
 
-    const offset = await getResumeOffset({
+    const probe = await getResumeOffset({
       host: 'peertube.example',
       token: 'tok',
       uploadId: 'UPR',
       fileSize: size,
     });
 
-    expect(offset).toBe(have);
+    expect(probe.offset).toBe(have);
+    expect(probe.uuid).toBeUndefined();
 
     const [url, body, config] = callArgs(mockedPut, 0);
     expect(url).toBe('https://peertube.example/api/v1/videos/upload-resumable?upload_id=UPR');
@@ -568,31 +583,36 @@ describe('getResumeOffset', () => {
     expect(config.headers['Content-Range']).toBe(`bytes */${size}`);
   });
 
-  it('returns the full size when the server reports the upload complete (200)', async () => {
+  it('returns the full size and the video uuid when the server reports it complete (200)', async () => {
     const size = 4096;
-    mockedPut.mockResolvedValueOnce({ status: 200, headers: {}, data: {} });
+    mockedPut.mockResolvedValueOnce({
+      status: 200,
+      headers: {},
+      data: { video: { uuid: 'done-uuid' } },
+    });
 
-    const offset = await getResumeOffset({
+    const probe = await getResumeOffset({
       host: 'peertube.example',
       token: 'tok',
       uploadId: 'UPR2',
       fileSize: size,
     });
 
-    expect(offset).toBe(size);
+    expect(probe.offset).toBe(size);
+    expect(probe.uuid).toBe('done-uuid');
   });
 
-  it('returns 0 when there is no Range header on a 308', async () => {
+  it('returns offset 0 when there is no Range header on a 308', async () => {
     mockedPut.mockResolvedValueOnce({ status: 308, headers: {}, data: {} });
 
-    const offset = await getResumeOffset({
+    const probe = await getResumeOffset({
       host: 'peertube.example',
       token: 'tok',
       uploadId: 'UPR3',
       fileSize: 4096,
     });
 
-    expect(offset).toBe(0);
+    expect(probe.offset).toBe(0);
   });
 });
 
@@ -625,6 +645,30 @@ describe('resumeUpload', () => {
     const chunk = callArgs(mockedPut, 1);
     expect(chunk[2].headers['Content-Range']).toBe(`bytes ${have}-${total - 1}/${total}`);
     expect((chunk[1] as Blob).size).toBe(total - have);
+    expect(progress).toEqual([[total, total]]);
+  });
+
+  it('completes from the probe uuid when the server already has the whole file', async () => {
+    const total = 1024;
+    const file = makeFile(total);
+    // Probe returns 200 (already complete) with the finished video; no chunks.
+    mockedPut.mockResolvedValueOnce({
+      status: 200,
+      headers: {},
+      data: { video: { uuid: 'already-done' } },
+    });
+
+    const progress: Array<[number, number]> = [];
+    const result = await resumeUpload({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      uploadId: 'UPC',
+      onProgress: (u, t) => progress.push([u, t]),
+    });
+
+    expect(result).toEqual({ uuid: 'already-done' });
+    expect(mockedPut).toHaveBeenCalledTimes(1); // probe only, no chunk uploads
     expect(progress).toEqual([[total, total]]);
   });
 });
