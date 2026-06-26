@@ -187,6 +187,14 @@ function parseUploadId(location: string, host: string): string | null {
   return m?.[1] ?? null;
 }
 
+export interface InitResult {
+  uploadId: string;
+  // True when the server reports (HTTP 200) that it already holds a partial
+  // upload for this file, rather than creating a fresh one (HTTP 201). Such a
+  // session must be resumed from the server offset, not sent from byte 0.
+  existing: boolean;
+}
+
 export async function initResumableUpload(p: {
   host: string;
   token: string;
@@ -196,7 +204,7 @@ export async function initResumableUpload(p: {
   privacy?: VideoPrivacy;
   description?: string;
   signal?: AbortSignal;
-}): Promise<string> {
+}): Promise<InitResult> {
   const body: Record<string, unknown> = {
     filename: p.file.name,
     name: p.name,
@@ -212,6 +220,7 @@ export async function initResumableUpload(p: {
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + p.token,
     },
+    validateStatus: (s: number) => s === 200 || s === 201,
   };
   if (p.signal) config.signal = p.signal;
 
@@ -223,7 +232,7 @@ export async function initResumableUpload(p: {
   if (!uploadId) {
     throw new Error('Resumable upload init did not return an upload_id');
   }
-  return uploadId;
+  return { uploadId, existing: res.status === 200 };
 }
 
 const CHUNK_START = 1024 * 1024; // 1 MiB
@@ -357,13 +366,27 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
   if (p.privacy !== undefined) initParams.privacy = p.privacy;
   if (p.description !== undefined) initParams.description = p.description;
   if (p.signal) initParams.signal = p.signal;
-  const uploadId = await initResumableUpload(initParams);
+  const { uploadId, existing } = await initResumableUpload(initParams);
   // If the user cancelled while init was in flight, abort before persisting the
   // session via onInit so a cancelled upload isn't resurrected as pending.
   if (p.signal?.aborted) {
     throw new DOMException('Upload aborted', 'AbortError');
   }
   if (p.onInit) p.onInit(uploadId);
+
+  // The server already holds a partial upload for this file: probe its offset
+  // and continue from there instead of optimistically sending from byte 0.
+  if (existing) {
+    const resumeParams: ResumeParams = {
+      host: p.host,
+      token: p.token,
+      file: p.file,
+      uploadId,
+    };
+    if (p.onProgress) resumeParams.onProgress = p.onProgress;
+    if (p.signal) resumeParams.signal = p.signal;
+    return resumeUpload(resumeParams);
+  }
 
   const loopOpts: ChunkLoopOptions = {
     host: p.host,

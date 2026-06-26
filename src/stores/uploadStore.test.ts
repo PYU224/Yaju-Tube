@@ -27,29 +27,41 @@ describe('uploadStore', () => {
   it('starts empty', () => {
     const store = useUploadStore()
 
-    expect(store.pending).toBeNull()
-    expect(store.hasPending).toBe(false)
+    expect(store.pendingFor('peertube.example', 'alice')).toBeNull()
   })
 
-  it('sets, updates progress on, and clears a pending upload', () => {
+  it('sets, updates progress on, and clears a pending upload per account', () => {
     const store = useUploadStore()
 
     store.setPending(pending())
-    expect(store.hasPending).toBe(true)
-    expect(store.pending?.uploadId).toBe('UP-1')
+    expect(store.pendingFor('peertube.example', 'alice')?.uploadId).toBe('UP-1')
 
-    store.updateProgress(1024)
-    expect(store.pending?.uploadedBytes).toBe(1024)
+    store.updateProgress('peertube.example', 'alice', 1024)
+    expect(store.pendingFor('peertube.example', 'alice')?.uploadedBytes).toBe(1024)
 
-    store.clearPending()
-    expect(store.pending).toBeNull()
-    expect(store.hasPending).toBe(false)
+    store.clearPending('peertube.example', 'alice')
+    expect(store.pendingFor('peertube.example', 'alice')).toBeNull()
   })
 
-  it('ignores progress updates when there is no pending upload', () => {
+  it('keeps uploads for different accounts on the same host separate', () => {
     const store = useUploadStore()
 
-    expect(() => store.updateProgress(500)).not.toThrow()
-    expect(store.pending).toBeNull()
+    store.setPending(pending({ username: 'alice', uploadId: 'UP-A' }))
+    store.setPending(pending({ username: 'bob', uploadId: 'UP-B' }))
+
+    expect(store.pendingFor('peertube.example', 'alice')?.uploadId).toBe('UP-A')
+    expect(store.pendingFor('peertube.example', 'bob')?.uploadId).toBe('UP-B')
+
+    // Clearing one account must not disturb the other account's pending upload.
+    store.clearPending('peertube.example', 'alice')
+    expect(store.pendingFor('peertube.example', 'alice')).toBeNull()
+    expect(store.pendingFor('peertube.example', 'bob')?.uploadId).toBe('UP-B')
+  })
+
+  it('ignores progress updates when there is no matching pending upload', () => {
+    const store = useUploadStore()
+
+    expect(() => store.updateProgress('peertube.example', 'nobody', 500)).not.toThrow()
+    expect(store.pendingFor('peertube.example', 'nobody')).toBeNull()
   })
 })

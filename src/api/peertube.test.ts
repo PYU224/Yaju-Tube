@@ -310,7 +310,7 @@ describe('initResumableUpload', () => {
       },
     });
 
-    const uploadId = await initResumableUpload({
+    const result = await initResumableUpload({
       host: 'peertube.example',
       token: 'tok',
       file,
@@ -320,7 +320,8 @@ describe('initResumableUpload', () => {
       description: 'desc',
     });
 
-    expect(uploadId).toBe('ABC123');
+    expect(result.uploadId).toBe('ABC123');
+    expect(result.existing).toBe(false);
 
     const [url, body, config] = callArgs(mockedPost, 0);
     expect(url).toBe('https://peertube.example/api/v1/videos/upload-resumable');
@@ -343,7 +344,7 @@ describe('initResumableUpload', () => {
       headers: { location: '/api/v1/videos/upload-resumable?upload_id=REL99&foo=bar' },
     });
 
-    const uploadId = await initResumableUpload({
+    const result = await initResumableUpload({
       host: 'peertube.example',
       token: 'tok',
       file,
@@ -351,7 +352,25 @@ describe('initResumableUpload', () => {
       channelId: 1,
     });
 
-    expect(uploadId).toBe('REL99');
+    expect(result.uploadId).toBe('REL99');
+  });
+
+  it('flags an existing upload when the server responds 200 (resume)', async () => {
+    const file = makeFile(10);
+    mockedPost.mockResolvedValueOnce({
+      status: 200,
+      headers: { location: '?upload_id=EXIST1' },
+    });
+
+    const result = await initResumableUpload({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+    });
+
+    expect(result).toEqual({ uploadId: 'EXIST1', existing: true });
   });
 
   it('defaults privacy to PUBLIC and omits description when not given', async () => {
@@ -494,6 +513,34 @@ describe('uploadVideo', () => {
 
     expect(seen).toEqual(['INIT7']);
     expect(result).toEqual({ uuid: 'u-init' });
+  });
+
+  it('routes an existing (200) init through the resume-offset path', async () => {
+    const total = 1024 * 1024;
+    const have = 512 * 1024;
+    const file = makeFile(total);
+
+    // 200 init = the server already holds a partial upload for this file.
+    mockedPost.mockResolvedValueOnce({ status: 200, headers: { location: '?upload_id=UPX' } });
+    mockedPut
+      .mockResolvedValueOnce({ status: 308, headers: { range: `bytes=0-${have - 1}` }, data: {} })
+      .mockResolvedValueOnce({ status: 200, data: { video: { uuid: 'existing-uuid' } } });
+
+    const seen: string[] = [];
+    const result = await uploadVideo({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+      onInit: (id) => seen.push(id),
+    });
+
+    expect(result).toEqual({ uuid: 'existing-uuid' });
+    expect(seen).toEqual(['UPX']);
+    // First PUT is the resume probe; the chunk then continues from the offset.
+    expect(callArgs(mockedPut, 0)[2].headers['Content-Range']).toBe(`bytes */${total}`);
+    expect(callArgs(mockedPut, 1)[2].headers['Content-Range']).toBe(`bytes ${have}-${total - 1}/${total}`);
   });
 
   it('retries the same offset on HTTP 413 and shrinks the chunk', async () => {

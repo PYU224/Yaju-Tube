@@ -319,12 +319,11 @@ function onLogout() {
 
 // 現在ログイン中のインスタンス・アカウントに紐づく、未完了のアップロード。
 // 共有端末で別アカウントが同一ホストにログインしても他人の保留は表示しない。
-const pendingUpload = computed(() => {
-  const p = uploadStore.pending;
-  return p && p.host === authStore.host && p.username === (authStore.username ?? '')
-    ? p
-    : null;
-});
+const pendingUpload = computed(() =>
+  authStore.host
+    ? uploadStore.pendingFor(authStore.host, authStore.username ?? '')
+    : null,
+);
 
 // 再開には、中断時と同じファイル(名前・サイズ・更新日時が一致)の再選択が必要。
 // 別ファイルの混入による破損を防ぐ。
@@ -458,12 +457,12 @@ async function onStartUpload() {
       },
       onProgress: (uploaded: number, total: number) => {
         progress.value = total ? uploaded / total : 0;
-        uploadStore.updateProgress(uploaded);
+        uploadStore.updateProgress(authStore.host as string, authStore.username ?? '', uploaded);
       },
     });
     uploadedUuid.value = result.uuid;
     uploadedPrivacy.value = uploadPrivacy;
-    uploadStore.clearPending();
+    uploadStore.clearPending(authStore.host as string, authStore.username ?? '');
     currentUploadId = null;
   } catch {
     uploadError.value = t('upload.failed');
@@ -508,12 +507,12 @@ async function onResume() {
       signal: abortController.signal,
       onProgress: (uploaded: number, total: number) => {
         progress.value = total ? uploaded / total : 0;
-        uploadStore.updateProgress(uploaded);
+        uploadStore.updateProgress(authStore.host as string, authStore.username ?? '', uploaded);
       },
     });
     uploadedUuid.value = result.uuid;
     uploadedPrivacy.value = pending.privacy as VideoPrivacy;
-    uploadStore.clearPending();
+    uploadStore.clearPending(pending.host, pending.username);
     currentUploadId = null;
   } catch {
     uploadError.value = t('upload.failed');
@@ -544,12 +543,12 @@ async function discardPending() {
       token: authStore.accessToken as string,
       uploadId: pending.uploadId,
     });
-    uploadStore.clearPending();
+    uploadStore.clearPending(pending.host, pending.username);
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status;
     if (status === 404) {
       // Already gone server-side — safe to drop the local record.
-      uploadStore.clearPending();
+      uploadStore.clearPending(pending.host, pending.username);
     } else {
       // Keep the pending record so the user still has a resume/discard path.
       uploadError.value = t('upload.failed');
@@ -557,21 +556,32 @@ async function discardPending() {
   }
 }
 
-function onCancel() {
+async function onCancel() {
   abortController?.abort();
-  // Best-effort: also discard the partial upload on the server so it does not
-  // linger consuming the account's upload quota/slot until it expires.
-  if (currentUploadId) {
-    void cancelUpload({
-      host: authStore.host as string,
-      token: authStore.accessToken as string,
-      uploadId: currentUploadId,
-    }).catch(() => {
-      // ignore — the local abort already stopped the upload
-    });
-    currentUploadId = null;
+
+  const uploadId = currentUploadId;
+  currentUploadId = null;
+  const acctHost = authStore.host as string;
+  const acctUser = authStore.username ?? '';
+
+  if (!uploadId) {
+    uploadStore.clearPending(acctHost, acctUser);
+
+    return;
   }
-  uploadStore.clearPending();
+
+  // Keep the pending record until the server-side DELETE actually succeeds, so a
+  // failed cancellation still leaves the user a resume/discard path (mirrors
+  // discardPending). A 404 means it is already gone.
+  try {
+    await cancelUpload({ host: acctHost, token: authStore.accessToken as string, uploadId });
+    uploadStore.clearPending(acctHost, acctUser);
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      uploadStore.clearPending(acctHost, acctUser);
+    }
+  }
 }
 
 function onViewVideo() {
