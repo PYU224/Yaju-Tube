@@ -650,6 +650,97 @@ describe('UploadPage', () => {
     expect(wrapper.find('[aria-label="resume-upload"]').exists()).toBe(false)
   })
 
+  it('disables logout while a discard is in progress', async () => {
+    let resolveCancel!: () => void
+    mockedCancelUpload.mockImplementation(
+      () => new Promise<void>((resolve) => { resolveCancel = resolve }),
+    )
+
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+      useUploadStore().setPending({
+        host: '810video.com',
+        username: 'yaju',
+        uploadId: 'UP-D2',
+        name: 'Busy',
+        channelId: 1,
+        privacy: VIDEO_PRIVACY.PUBLIC,
+        description: '',
+        fileName: 'd.mp4',
+        fileSize: 4,
+        fileLastModified: 1_700_000_000_000,
+        uploadedBytes: 2,
+      })
+    })
+
+    await wrapper.get('[aria-label="discard-upload"]').trigger('click')
+    await flushPromises()
+
+    // The DELETE is still in flight -> logout must be disabled.
+    expect((wrapper.get('[aria-label="logout"]').element as HTMLButtonElement).disabled).toBe(true)
+
+    resolveCancel()
+    await flushPromises()
+
+    expect((wrapper.get('[aria-label="logout"]').element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('clears stale success state on logout so the next account sees its pending', async () => {
+    mockedUploadVideo.mockResolvedValue({ uuid: 'uuid-alice' })
+
+    const { authStore, wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'alice',
+        host: '810video.com',
+        channels: [channel()],
+      })
+    })
+
+    const file = new File(['data'], 'a.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', { value: [file], configurable: true })
+    await fileInput.trigger('change')
+    await flushPromises()
+    await wrapper.get('[aria-label="start-upload"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain(i18n.global.t('upload.success'))
+
+    await wrapper.get('[aria-label="logout"]').trigger('click')
+    await flushPromises()
+
+    // A different account with its own interrupted upload logs in on the same page.
+    const uploadStore = useUploadStore()
+    uploadStore.setPending({
+      host: '810video.com',
+      username: 'bob',
+      uploadId: 'UP-BOB',
+      name: "Bob's clip",
+      channelId: 1,
+      privacy: VIDEO_PRIVACY.PUBLIC,
+      description: '',
+      fileName: 'b.mp4',
+      fileSize: 4,
+      fileLastModified: 1_700_000_000_000,
+      uploadedBytes: 2,
+    })
+    authStore.setSession({
+      accessToken: 'token2',
+      username: 'bob',
+      host: '810video.com',
+      channels: [channel()],
+    })
+    await flushPromises()
+
+    // The stale success UUID was cleared on logout, so Bob's resume banner shows.
+    expect(wrapper.find('[aria-label="resume-upload"]').exists()).toBe(true)
+  })
+
   it('logs out and resets the store', async () => {
     const { authStore, wrapper } = await mountUploadPage(({ authStore }) => {
       authStore.setSession({

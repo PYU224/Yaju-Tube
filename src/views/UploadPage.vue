@@ -56,7 +56,7 @@
         <ion-button
           fill="outline"
           aria-label="logout"
-          :disabled="uploading"
+          :disabled="uploading || discarding"
           @click="onLogout"
         >
           <ion-icon
@@ -74,7 +74,7 @@
           <ion-button
             size="small"
             aria-label="resume-upload"
-            :disabled="uploading || !canResume"
+            :disabled="uploading || discarding || !canResume"
             @click="onResume"
           >
             {{ $t('upload.resume') }}
@@ -83,7 +83,7 @@
             size="small"
             color="medium"
             aria-label="discard-upload"
-            :disabled="uploading"
+            :disabled="uploading || discarding"
             @click="discardPending"
           >
             {{ $t('upload.discard') }}
@@ -250,6 +250,7 @@ const name = ref('');
 const description = ref('');
 const privacy = ref<VideoPrivacy>(VIDEO_PRIVACY.PUBLIC);
 const uploading = ref(false);
+const discarding = ref(false);
 const progress = ref(0);
 const uploadedUuid = ref('');
 const uploadedPrivacy = ref<VideoPrivacy | null>(null);
@@ -294,6 +295,8 @@ async function onLogin() {
       channels: account.channels,
     });
     selectedChannelId.value = account.channels[0]?.id;
+    // Restore this account's interrupted upload metadata (if any) into the form.
+    syncFormWithPending();
   } catch (error) {
     if (error instanceof PeerTubeAuthError) {
       if (error.code === 'invalid_grant') {
@@ -315,6 +318,7 @@ async function onLogin() {
 
 function onLogout() {
   authStore.logout();
+  resetUploadState();
 }
 
 // 現在ログイン中のインスタンス・アカウントに紐づく、未完了のアップロード。
@@ -340,11 +344,30 @@ const canResume = computed(() => {
 });
 
 // 再開対象がある場合は、保存済みのメタデータをフォームへ復元する
-if (pendingUpload.value) {
-  name.value = pendingUpload.value.name;
-  description.value = pendingUpload.value.description;
-  privacy.value = pendingUpload.value.privacy as VideoPrivacy;
-  selectedChannelId.value = pendingUpload.value.channelId;
+function syncFormWithPending() {
+  const p = pendingUpload.value;
+  if (p) {
+    name.value = p.name;
+    description.value = p.description;
+    privacy.value = p.privacy as VideoPrivacy;
+    selectedChannelId.value = p.channelId;
+  }
+}
+syncFormWithPending();
+
+// ログアウト時にページ内のアップロード状態を初期化し、次に同じ画面でログイン
+// したアカウントへ前のセッションの成功表示やファイル選択が残らないようにする
+function resetUploadState() {
+  uploadedUuid.value = '';
+  uploadedPrivacy.value = null;
+  uploadError.value = '';
+  progress.value = 0;
+  selectedFile.value = null;
+  name.value = '';
+  description.value = '';
+  privacy.value = VIDEO_PRIVACY.PUBLIC;
+  password.value = '';
+  otp.value = '';
 }
 
 function onFileChange(event: Event) {
@@ -522,37 +545,46 @@ async function onResume() {
 }
 
 async function discardPending() {
-  if (uploading.value) return;
+  if (uploading.value || discarding.value) return;
   const pending = pendingUpload.value;
   if (!pending) return;
 
-  // Refresh first so an expired token doesn't make the cancellation fail and
-  // strand the server-side session.
+  // Mark busy so logout (and the resume/discard buttons) are disabled while the
+  // token refresh + DELETE are in flight, preventing a logout mid-cancel that
+  // would apply a fresh token to a cleared session.
+  discarding.value = true;
   try {
-    await ensureValidToken();
-  } catch {
-    authStore.logout();
-    loginError.value = t('auth.sessionExpired');
+    // Refresh first so an expired token doesn't make the cancellation fail and
+    // strand the server-side session.
+    try {
+      await ensureValidToken();
+    } catch {
+      authStore.logout();
+      resetUploadState();
+      loginError.value = t('auth.sessionExpired');
 
-    return;
-  }
-
-  try {
-    await cancelUpload({
-      host: authStore.host as string,
-      token: authStore.accessToken as string,
-      uploadId: pending.uploadId,
-    });
-    uploadStore.clearPending(pending.host, pending.username);
-  } catch (err) {
-    const status = (err as { response?: { status?: number } })?.response?.status;
-    if (status === 404) {
-      // Already gone server-side — safe to drop the local record.
-      uploadStore.clearPending(pending.host, pending.username);
-    } else {
-      // Keep the pending record so the user still has a resume/discard path.
-      uploadError.value = t('upload.failed');
+      return;
     }
+
+    try {
+      await cancelUpload({
+        host: authStore.host as string,
+        token: authStore.accessToken as string,
+        uploadId: pending.uploadId,
+      });
+      uploadStore.clearPending(pending.host, pending.username);
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        // Already gone server-side — safe to drop the local record.
+        uploadStore.clearPending(pending.host, pending.username);
+      } else {
+        // Keep the pending record so the user still has a resume/discard path.
+        uploadError.value = t('upload.failed');
+      }
+    }
+  } finally {
+    discarding.value = false;
   }
 }
 
