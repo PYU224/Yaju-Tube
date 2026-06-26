@@ -10,6 +10,9 @@ export interface PendingUpload {
   description: string;
   fileName: string;
   fileSize: number;
+  // File.lastModified of the source file, used together with name + size to
+  // guard against resuming a different file into the same upload session.
+  fileLastModified: number;
   uploadedBytes: number;
 }
 

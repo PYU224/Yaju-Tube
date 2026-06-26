@@ -195,6 +195,7 @@ export async function initResumableUpload(p: {
   channelId: number;
   privacy?: VideoPrivacy;
   description?: string;
+  signal?: AbortSignal;
 }): Promise<string> {
   const body: Record<string, unknown> = {
     filename: p.file.name,
@@ -204,14 +205,17 @@ export async function initResumableUpload(p: {
   };
   if (p.description !== undefined) body['description'] = p.description;
 
-  const res = await axios.post(apiBase(p.host) + '/videos/upload-resumable', body, {
+  const config: AxiosRequestConfig = {
     headers: {
       'X-Upload-Content-Length': String(p.file.size),
       'X-Upload-Content-Type': p.file.type || 'video/mp4',
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + p.token,
     },
-  });
+  };
+  if (p.signal) config.signal = p.signal;
+
+  const res = await axios.post(apiBase(p.host) + '/videos/upload-resumable', body, config);
 
   const resHeaders = (res.headers ?? {}) as Record<string, string>;
   const location: string = resHeaders['location'] ?? resHeaders['Location'] ?? '';
@@ -228,6 +232,21 @@ const CHUNK_MAX_DEFAULT = 100 * 1024 * 1024; // 100 MiB
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+// Parses the last byte the server acknowledges from a `Range: bytes=0-N`
+// response header (used on resumable 308/200/201 responses). Returns N, or
+// null when the header is absent/unparseable.
+function parseAckedEnd(headers: unknown): number | null {
+  const h = (headers ?? {}) as Record<string, string>;
+  const range = h['range'] ?? h['Range'];
+  if (typeof range === 'string') {
+    const m = /bytes=0-(\d+)/.exec(range);
+    if (m && m[1] !== undefined) {
+      return parseInt(m[1], 10);
+    }
+  }
+  return null;
 }
 
 interface ChunkLoopOptions {
@@ -280,8 +299,12 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
         uuid = res.data?.video?.uuid;
       }
 
-      start = end;
-      if (opts.onProgress) opts.onProgress(end, total);
+      // Advance from the byte the server acknowledges (308 Range header) rather
+      // than optimistically to `end`: if only part of the chunk was stored,
+      // this re-sends the unacknowledged tail instead of skipping it.
+      const acked = parseAckedEnd(res.headers);
+      start = acked !== null ? acked + 1 : end;
+      if (opts.onProgress) opts.onProgress(start, total);
 
       // Dynamic chunk sizing
       if (elapsedMs < 8000) {
@@ -317,6 +340,7 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
     channelId: number;
     privacy?: VideoPrivacy;
     description?: string;
+    signal?: AbortSignal;
   } = {
     host: p.host,
     token: p.token,
@@ -326,7 +350,13 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
   };
   if (p.privacy !== undefined) initParams.privacy = p.privacy;
   if (p.description !== undefined) initParams.description = p.description;
+  if (p.signal) initParams.signal = p.signal;
   const uploadId = await initResumableUpload(initParams);
+  // If the user cancelled while init was in flight, abort before persisting the
+  // session via onInit so a cancelled upload isn't resurrected as pending.
+  if (p.signal?.aborted) {
+    throw new DOMException('Upload aborted', 'AbortError');
+  }
   if (p.onInit) p.onInit(uploadId);
 
   const loopOpts: ChunkLoopOptions = {
@@ -372,13 +402,9 @@ export async function getResumeOffset(p: {
     },
   );
 
-  const headers = (res.headers ?? {}) as Record<string, string>;
-  const range = headers['range'] ?? headers['Range'];
-  if (typeof range === 'string') {
-    const m = /bytes=0-(\d+)/.exec(range);
-    if (m && m[1] !== undefined) {
-      return { offset: parseInt(m[1], 10) + 1 };
-    }
+  const acked = parseAckedEnd(res.headers);
+  if (acked !== null) {
+    return { offset: acked + 1 };
   }
   // 200/201 means the server already has the whole file and returns the video.
   if (res.status === 200 || res.status === 201) {

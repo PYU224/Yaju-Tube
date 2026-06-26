@@ -379,15 +379,19 @@ describe('UploadPage', () => {
         description: '',
         fileName: 'clip.mp4',
         fileSize: 8,
+        fileLastModified: 1_700_000_000_000,
         uploadedBytes: 4,
       })
     })
 
     const resumeButton = wrapper.get('[aria-label="resume-upload"]')
-    // resume stays disabled until the same file (name + size) is provided
+    // resume stays disabled until the same file (name + size + mtime) is provided
     expect((resumeButton.element as HTMLButtonElement).disabled).toBe(true)
 
-    const file = new File([new Uint8Array(8)], 'clip.mp4', { type: 'video/mp4' })
+    const file = new File([new Uint8Array(8)], 'clip.mp4', {
+      type: 'video/mp4',
+      lastModified: 1_700_000_000_000,
+    })
     const fileInput = wrapper.get('[data-testid="file-input"]')
     Object.defineProperty(fileInput.element, 'files', {
       value: [file],
@@ -412,6 +416,45 @@ describe('UploadPage', () => {
     expect(wrapper.text()).toContain(i18n.global.t('upload.success'))
   })
 
+  it('keeps resume disabled when a same-name/size file has a different mtime', async () => {
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+      useUploadStore().setPending({
+        host: '810video.com',
+        uploadId: 'UP-RESUME',
+        name: 'Half done',
+        channelId: 1,
+        privacy: VIDEO_PRIVACY.PUBLIC,
+        description: '',
+        fileName: 'clip.mp4',
+        fileSize: 8,
+        fileLastModified: 1_700_000_000_000,
+        uploadedBytes: 4,
+      })
+    })
+
+    // Same name and byte length, but a different modification time -> not the
+    // same file, so resume must stay disabled.
+    const file = new File([new Uint8Array(8)], 'clip.mp4', {
+      type: 'video/mp4',
+      lastModified: 1_700_000_999_999,
+    })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    expect((wrapper.get('[aria-label="resume-upload"]').element as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('discards a pending upload server-side and hides the resume banner', async () => {
     mockedCancelUpload.mockResolvedValue(undefined)
 
@@ -431,6 +474,7 @@ describe('UploadPage', () => {
         description: '',
         fileName: 'a.mp4',
         fileSize: 10,
+        fileLastModified: 1_700_000_000_000,
         uploadedBytes: 5,
       })
     })

@@ -12,6 +12,7 @@ function pending(overrides: Partial<PendingUpload> = {}): PendingUpload {
     description: '',
     fileName: 'clip.mp4',
     fileSize: 2048,
+    fileLastModified: 1_700_000_000_000,
     uploadedBytes: 0,
     ...overrides,
   }

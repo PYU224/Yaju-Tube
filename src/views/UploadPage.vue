@@ -313,11 +313,18 @@ const pendingUpload = computed(() =>
     : null,
 );
 
-// 再開には、中断時と同じファイル(名前・サイズ一致)の再選択が必要
+// 再開には、中断時と同じファイル(名前・サイズ・更新日時が一致)の再選択が必要。
+// 別ファイルの混入による破損を防ぐ。
 const canResume = computed(() => {
   const p = pendingUpload.value;
   const f = selectedFile.value;
-  return !!p && !!f && f.name === p.fileName && f.size === p.fileSize;
+  return (
+    !!p &&
+    !!f &&
+    f.name === p.fileName &&
+    f.size === p.fileSize &&
+    f.lastModified === p.fileLastModified
+  );
 });
 
 // 再開対象がある場合は、保存済みのメタデータをフォームへ復元する
@@ -423,6 +430,7 @@ async function onStartUpload() {
           description: description.value,
           fileName: file.name,
           fileSize: file.size,
+          fileLastModified: file.lastModified,
           uploadedBytes: 0,
         });
       },

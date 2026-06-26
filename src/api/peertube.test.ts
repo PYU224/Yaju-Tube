@@ -443,6 +443,39 @@ describe('uploadVideo', () => {
     ]);
   });
 
+  it('advances from the server-acknowledged Range when a chunk is only partly stored', async () => {
+    const oneMiB = 1024 * 1024;
+    const file = makeFile(oneMiB);
+    const acked = 512 * 1024;
+
+    mockedPost.mockResolvedValueOnce({ headers: { location: '?upload_id=UPACK' } });
+    // First PUT sends [0, 1 MiB) but the server only acknowledges 0-(512 KiB-1).
+    mockedPut
+      .mockResolvedValueOnce({ status: 308, headers: { range: `bytes=0-${acked - 1}` }, data: {} })
+      .mockResolvedValueOnce({ status: 200, data: { video: { uuid: 'partial-uuid' } } });
+
+    const progress: Array<[number, number]> = [];
+    const result = await uploadVideo({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+      onProgress: (u, t) => progress.push([u, t]),
+    });
+
+    expect(result).toEqual({ uuid: 'partial-uuid' });
+    expect(mockedPut).toHaveBeenCalledTimes(2);
+    // first chunk requested the full 1 MiB
+    expect(callArgs(mockedPut, 0)[2].headers['Content-Range']).toBe(`bytes 0-${oneMiB - 1}/${oneMiB}`);
+    // the retry resumes from the acknowledged byte, not the optimistic end
+    const second = callArgs(mockedPut, 1);
+    expect(second[2].headers['Content-Range']).toBe(`bytes ${acked}-${oneMiB - 1}/${oneMiB}`);
+    expect((second[1] as Blob).size).toBe(oneMiB - acked);
+    // progress reflects the acknowledged offset after the first chunk
+    expect(progress[0]).toEqual([acked, oneMiB]);
+  });
+
   it('reports the upload_id via onInit before sending chunks', async () => {
     const oneMiB = 1024 * 1024;
     const file = makeFile(oneMiB);
