@@ -1,6 +1,7 @@
 // PeerTube API (OAuth login + resumable video upload)
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 export interface OAuthClient {
   client_id: string;
@@ -64,6 +65,83 @@ export function normalizeHost(host: string): string {
 
 export function apiBase(host: string): string {
   return 'https://' + normalizeHost(host) + '/api/v1';
+}
+
+// ----- Resumable-upload HTTP plumbing --------------------------------------
+// PeerTube's resumable upload exposes the new upload's id only in the `Location`
+// response header (init) and the already-stored byte count only in the `Range`
+// header (resume probe). A browser/WebView strips both unless the server lists
+// them in `Access-Control-Expose-Headers`, which PeerTube does not — so axios
+// (XHR) can never read them and every upload fails at init. The reference mobile
+// application sidesteps this by using a native HTTP client (Dio), which is not
+// bound by CORS. We do the same on native platforms via Capacitor's native HTTP,
+// while keeping axios on the web (same-origin/proxied, and the path the unit
+// tests exercise).
+
+interface NormalizedResponse {
+  status: number;
+  headers: Record<string, string>;
+  data: unknown;
+}
+
+function isNativePlatform(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+// Native HTTP preserves the server's header casing; lowercase the keys so
+// `location` / `range` lookups match regardless of platform/transport.
+function lowerCaseHeaders(headers: Record<string, string> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (headers) {
+    for (const key of Object.keys(headers)) {
+      const value = headers[key];
+      if (value !== undefined) out[key.toLowerCase()] = value;
+    }
+  }
+  return out;
+}
+
+// CapacitorHttp resolves for every completed exchange instead of rejecting on
+// 4xx/5xx the way axios' validateStatus does. Re-create that rejection with an
+// axios-shaped error so shared error handling that inspects `err.response.status`
+// (e.g. the 413/404 branches) behaves identically on both transports.
+class ResumableHttpError extends Error {
+  response: { status: number; data: unknown };
+
+  constructor(status: number, data: unknown) {
+    super('Resumable upload request failed with status ' + status);
+    this.name = 'ResumableHttpError';
+    this.response = { status, data };
+  }
+}
+
+// Performs a resumable-upload request through Capacitor's native HTTP client so
+// the `Location` / `Range` response headers are readable (no CORS stripping).
+async function nativeRequest(opts: {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  data?: unknown;
+  validateStatus: (status: number) => boolean;
+  signal?: AbortSignal;
+}): Promise<NormalizedResponse> {
+  if (opts.signal?.aborted) {
+    throw new DOMException('Upload aborted', 'AbortError');
+  }
+  const res = await CapacitorHttp.request({
+    url: opts.url,
+    method: opts.method,
+    headers: opts.headers,
+    ...(opts.data !== undefined ? { data: opts.data } : {}),
+  });
+  if (!opts.validateStatus(res.status)) {
+    throw new ResumableHttpError(res.status, res.data);
+  }
+  return { status: res.status, headers: lowerCaseHeaders(res.headers), data: res.data };
 }
 
 export async function getOAuthClient(host: string): Promise<OAuthClient> {
@@ -215,29 +293,48 @@ export async function initResumableUpload(p: {
   };
   if (p.description !== undefined) body['description'] = p.description;
 
-  const config: AxiosRequestConfig = {
-    headers: {
-      'X-Upload-Content-Length': String(p.file.size),
-      'X-Upload-Content-Type': p.file.type || 'video/mp4',
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + p.token,
-    },
-    validateStatus: (s: number) => s === 200 || s === 201,
+  const headers: Record<string, string> = {
+    'X-Upload-Content-Length': String(p.file.size),
+    'X-Upload-Content-Type': p.file.type || 'video/mp4',
+    'Content-Type': 'application/json',
+    Authorization: 'Bearer ' + p.token,
   };
-  if (p.signal) config.signal = p.signal;
+  const validateStatus = (s: number) => s === 200 || s === 201;
+  const url = apiBase(p.host) + '/videos/upload-resumable';
 
-  const res = await axios.post(apiBase(p.host) + '/videos/upload-resumable', body, config);
+  // The upload_id is returned only in the `Location` header, which CORS hides from
+  // the WebView — so read it via native HTTP on native platforms, axios on web.
+  let res: NormalizedResponse;
+  if (isNativePlatform()) {
+    const nativeOpts: Parameters<typeof nativeRequest>[0] = {
+      url,
+      method: 'POST',
+      headers,
+      data: body,
+      validateStatus,
+    };
+    if (p.signal) nativeOpts.signal = p.signal;
+    res = await nativeRequest(nativeOpts);
+  } else {
+    const config: AxiosRequestConfig = { headers, validateStatus };
+    if (p.signal) config.signal = p.signal;
+    const axiosRes = await axios.post(url, body, config);
+    res = {
+      status: axiosRes.status,
+      headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
+      data: axiosRes.data,
+    };
+  }
 
-  const resHeaders = (res.headers ?? {}) as Record<string, string>;
-  const location: string = resHeaders['location'] ?? resHeaders['Location'] ?? '';
+  const location: string = res.headers['location'] ?? '';
   // uploadx returns the upload URL (carrying upload_id) in Location for both
   // 201 (created) and 200 (existing). Fall back to an id in the response body
   // for servers/proxies that omit Location on the 200 resume response.
-  const data = res.data ?? {};
+  const data = (res.data ?? {}) as Record<string, unknown>;
   const bodyId =
-    (typeof data.upload_id === 'string' && data.upload_id) ||
-    (typeof data.uploadId === 'string' && data.uploadId) ||
-    (typeof data.id === 'string' && data.id) ||
+    (typeof data['upload_id'] === 'string' && data['upload_id']) ||
+    (typeof data['uploadId'] === 'string' && data['uploadId']) ||
+    (typeof data['id'] === 'string' && data['id']) ||
     null;
   const uploadId = parseUploadId(location, p.host) ?? bodyId;
   if (!uploadId) {
@@ -311,6 +408,10 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
         validateStatus: (s: number) => s === 200 || s === 308,
       };
       if (opts.signal) config.signal = opts.signal;
+      // Chunks stay on axios on every platform: the request body is binary and
+      // the response body (final uuid) and status are readable under CORS. Only
+      // the per-chunk `Range` ack header is hidden on the WebView, which simply
+      // falls back to the optimistic `end` below (correct for an accepted 308).
       const res = await axios.put(url, blob, config);
 
       const elapsedMs = Date.now() - startedAt;
@@ -321,7 +422,9 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
 
       // Advance from the byte the server acknowledges (308 Range header) rather
       // than optimistically to `end`: if only part of the chunk was stored,
-      // this re-sends the unacknowledged tail instead of skipping it.
+      // this re-sends the unacknowledged tail instead of skipping it. When the
+      // Range header is unreadable (WebView/CORS) this advances to `end`, which
+      // matches what an accepted 308 stored.
       const acked = parseAckedEnd(res.headers);
       start = acked !== null ? acked + 1 : end;
       if (opts.onProgress) opts.onProgress(start, total);
@@ -378,9 +481,17 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
   if (p.description !== undefined) initParams.description = p.description;
   if (p.signal) initParams.signal = p.signal;
   const { uploadId, existing } = await initResumableUpload(initParams);
-  // If the user cancelled while init was in flight, abort before persisting the
-  // session via onInit so a cancelled upload isn't resurrected as pending.
+  // If the user cancelled while init was in flight, the server still created the
+  // upload session — and on native the request can't be aborted mid-flight, so it
+  // always completes. Delete it server-side before surfacing the abort so it isn't
+  // orphaned. We do NOT call onInit, so the UI never persists it as pending; the
+  // cleanup is best-effort and the abort is reported regardless of its outcome.
   if (p.signal?.aborted) {
+    try {
+      await cancelUpload({ host: p.host, token: p.token, uploadId });
+    } catch {
+      // best-effort: surface the original abort even if cleanup fails
+    }
     throw new DOMException('Upload aborted', 'AbortError');
   }
   if (p.onInit) p.onInit(uploadId);
@@ -429,18 +540,27 @@ export async function getResumeOffset(p: {
   uploadId: string;
   fileSize: number;
 }): Promise<ResumeProbe> {
-  const res = await axios.put(
-    apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId,
-    undefined,
-    {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Content-Range': 'bytes */' + p.fileSize,
-        Authorization: 'Bearer ' + p.token,
-      },
-      validateStatus: (s: number) => s === 200 || s === 201 || s === 308,
-    },
-  );
+  const url = apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/octet-stream',
+    'Content-Range': 'bytes */' + p.fileSize,
+    Authorization: 'Bearer ' + p.token,
+  };
+  const validateStatus = (s: number) => s === 200 || s === 201 || s === 308;
+
+  // The already-stored byte count comes back in the `Range` header, which CORS
+  // hides from the WebView — so probe via native HTTP on native, axios on web.
+  let res: NormalizedResponse;
+  if (isNativePlatform()) {
+    res = await nativeRequest({ url, method: 'PUT', headers, validateStatus });
+  } else {
+    const axiosRes = await axios.put(url, undefined, { headers, validateStatus });
+    res = {
+      status: axiosRes.status,
+      headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
+      data: axiosRes.data,
+    };
+  }
 
   const acked = parseAckedEnd(res.headers);
   if (acked !== null) {
@@ -449,7 +569,7 @@ export async function getResumeOffset(p: {
   // 200/201 means the server already has the whole file and returns the video.
   if (res.status === 200 || res.status === 201) {
     const result: ResumeProbe = { offset: p.fileSize };
-    const uuid = res.data?.video?.uuid;
+    const uuid = (res.data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
     if (uuid) result.uuid = uuid;
     return result;
   }
