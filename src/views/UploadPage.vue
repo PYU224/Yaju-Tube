@@ -433,6 +433,15 @@ async function onStartUpload() {
 
     return;
   }
+  // PeerTube accepts a description of null OR 3–10000 characters. A blank
+  // description is fine (sent as unset), but a non-empty one outside that range
+  // is rejected — flag it here instead of silently dropping the user's text.
+  const trimmedDescription = description.value.trim();
+  if (trimmedDescription && (trimmedDescription.length < 3 || trimmedDescription.length > 10000)) {
+    uploadError.value = t('upload.descriptionLength');
+
+    return;
+  }
   if (selectedChannelId.value === undefined) {
     uploadError.value = t('upload.noChannels');
 

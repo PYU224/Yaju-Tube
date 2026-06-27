@@ -2,6 +2,7 @@
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { Device } from '@capacitor/device';
 
 export interface OAuthClient {
   client_id: string;
@@ -120,12 +121,18 @@ class ResumableHttpError extends Error {
 }
 
 // Performs a resumable-upload request through Capacitor's native HTTP client so
-// the `Location` / `Range` response headers are readable (no CORS stripping).
+// the `Location` / `Range` response headers are readable (no CORS stripping) and
+// so binary chunk bodies bypass the WebView entirely (mirrors the reference
+// mobile app, which routes every upload request through a native HTTP client).
 async function nativeRequest(opts: {
   url: string;
   method: string;
   headers: Record<string, string>;
   data?: unknown;
+  // CapacitorHttp coerces a request body to a UTF-8 string unless `dataType` is
+  // set; 'file' makes the native layer base64-decode `data` back to raw bytes,
+  // which is the only way to send a binary chunk body intact.
+  dataType?: 'file' | 'formData';
   validateStatus: (status: number) => boolean;
   signal?: AbortSignal;
 }): Promise<NormalizedResponse> {
@@ -137,11 +144,43 @@ async function nativeRequest(opts: {
     method: opts.method,
     headers: opts.headers,
     ...(opts.data !== undefined ? { data: opts.data } : {}),
+    ...(opts.dataType !== undefined ? { dataType: opts.dataType } : {}),
   });
   if (!opts.validateStatus(res.status)) {
     throw new ResumableHttpError(res.status, res.data);
   }
   return { status: res.status, headers: lowerCaseHeaders(res.headers), data: res.data };
+}
+
+// Whether the per-chunk binary PUT can go through Capacitor's native HTTP
+// client. CapacitorHttp transmits a binary body only via the `dataType: 'file'`
+// path, which Capacitor's Android layer base64-decodes to raw bytes ONLY on API
+// 26+ (it uses java.util.Base64); on older Android it would send an empty body.
+// So below API 26 — and on any non-Android/web platform — fall back to axios,
+// which sends the Blob correctly on every API level. Defaults to false (axios)
+// when the platform can't be probed.
+async function nativeChunkSupported(): Promise<boolean> {
+  if (!isNativePlatform()) return false;
+  try {
+    const info = await Device.getInfo();
+    return info.platform === 'android' && (info.androidSDKVersion ?? 0) >= 26;
+  } catch {
+    return false;
+  }
+}
+
+// Encodes a binary blob as a base64 string for CapacitorHttp's `dataType: 'file'`
+// path. The bytes are walked in fixed-size blocks because
+// `String.fromCharCode(...wholeArray)` overflows the call stack for multi-MiB
+// chunks.
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  const BLOCK = 0x8000; // 32 KiB per fromCharCode call
+  for (let i = 0; i < bytes.length; i += BLOCK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + BLOCK) as unknown as number[]);
+  }
+  return btoa(binary);
 }
 
 export async function getOAuthClient(host: string): Promise<OAuthClient> {
@@ -291,7 +330,16 @@ export async function initResumableUpload(p: {
     channelId: p.channelId,
     privacy: p.privacy ?? VIDEO_PRIVACY.PUBLIC,
   };
-  if (p.description !== undefined) body['description'] = p.description;
+  // PeerTube validates the description as null OR 3–10000 characters, and
+  // express-validator's `.optional()` does NOT skip an empty string — so sending
+  // description: "" (what the form produces when the field is left blank) is
+  // rejected with HTTP 400 at init, before any byte is uploaded. That is the
+  // "upload fails within seconds" bug. Only include the description when it is a
+  // valid length; otherwise omit it so the server treats it as unset.
+  const description = p.description?.trim();
+  if (description && description.length >= 3 && description.length <= 10000) {
+    body['description'] = description;
+  }
 
   const headers: Record<string, string> = {
     'X-Upload-Content-Length': String(p.file.size),
@@ -346,6 +394,10 @@ export async function initResumableUpload(p: {
 const CHUNK_START = 1024 * 1024; // 1 MiB
 const CHUNK_MIN = 256 * 1024; // 256 KiB
 const CHUNK_MAX_DEFAULT = 100 * 1024 * 1024; // 100 MiB
+// On native each chunk is held in memory as base64 (~1.33× its size) before
+// being handed to CapacitorHttp, so cap the ceiling lower than the web default
+// to avoid memory spikes when a fast connection grows the dynamic chunk size.
+const CHUNK_MAX_NATIVE = 16 * 1024 * 1024; // 16 MiB
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -383,8 +435,9 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
   const total = opts.file.size;
   const url = apiBase(opts.host) + '/videos/upload-resumable?upload_id=' + opts.uploadId;
 
+  const useNativeChunk = await nativeChunkSupported();
   let chunkSize = CHUNK_START;
-  let maxChunkSize = CHUNK_MAX_DEFAULT;
+  let maxChunkSize = useNativeChunk ? CHUNK_MAX_NATIVE : CHUNK_MAX_DEFAULT;
   let start = opts.startOffset ?? 0;
   let uuid: string | undefined;
 
@@ -399,25 +452,59 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
 
     const startedAt = Date.now();
     try {
-      const config: AxiosRequestConfig = {
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'Content-Range': 'bytes ' + start + '-' + (end - 1) + '/' + total,
-          Authorization: 'Bearer ' + opts.token,
-        },
-        validateStatus: (s: number) => s === 200 || s === 308,
+      const chunkHeaders: Record<string, string> = {
+        'Content-Type': 'application/octet-stream',
+        'Content-Range': 'bytes ' + start + '-' + (end - 1) + '/' + total,
+        Authorization: 'Bearer ' + opts.token,
       };
-      if (opts.signal) config.signal = opts.signal;
-      // Chunks stay on axios on every platform: the request body is binary and
-      // the response body (final uuid) and status are readable under CORS. Only
-      // the per-chunk `Range` ack header is hidden on the WebView, which simply
-      // falls back to the optimistic `end` below (correct for an accepted 308).
-      const res = await axios.put(url, blob, config);
+      const validateStatus = (s: number) => s === 200 || s === 308;
+
+      // On supported native platforms the chunk PUT goes through Capacitor's
+      // native HTTP client, like the reference app: it bypasses the WebView's
+      // cross-origin restrictions and can read the server-acknowledged `Range`
+      // header that CORS otherwise hides. Native HTTP can't carry a Blob, so the
+      // chunk is sent as base64 with dataType 'file' (decoded to raw bytes
+      // natively). Elsewhere (web, or Android < 8 where that decode is missing)
+      // axios sends the Blob directly.
+      let res: NormalizedResponse;
+      if (useNativeChunk) {
+        const base64 = await blobToBase64(blob);
+        const nativeOpts: Parameters<typeof nativeRequest>[0] = {
+          url,
+          method: 'PUT',
+          headers: chunkHeaders,
+          data: base64,
+          dataType: 'file',
+          validateStatus,
+        };
+        if (opts.signal) nativeOpts.signal = opts.signal;
+        res = await nativeRequest(nativeOpts);
+      } else {
+        const config: AxiosRequestConfig = { headers: chunkHeaders, validateStatus };
+        if (opts.signal) config.signal = opts.signal;
+        const axiosRes = await axios.put(url, blob, config);
+        res = {
+          status: axiosRes.status,
+          headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
+          data: axiosRes.data,
+        };
+      }
+
+      // A native chunk PUT can't be interrupted once dispatched (CapacitorHttp
+      // has no mid-flight abort), so a Cancel during the final chunk would
+      // otherwise still resolve the upload as a success. Honor the abort the
+      // moment the request returns — before reading the uuid or reporting
+      // progress — mirroring the post-init abort handling in uploadVideo. (On
+      // web axios already rejects an aborted request mid-flight; this is a
+      // harmless extra guard there.)
+      if (opts.signal?.aborted) {
+        throw new DOMException('Upload aborted', 'AbortError');
+      }
 
       const elapsedMs = Date.now() - startedAt;
 
       if (res.status === 200) {
-        uuid = res.data?.video?.uuid;
+        uuid = (res.data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
       }
 
       // Advance from the byte the server acknowledges (308 Range header) rather

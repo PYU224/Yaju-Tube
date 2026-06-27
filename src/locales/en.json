@@ -128,6 +128,7 @@
     "resumeNotice": "You have an interrupted upload \"{name}\". Select the same video file to resume",
     "resume": "Resume",
     "discard": "Discard",
-    "nameLength": "Video title must be 3–120 characters"
+    "nameLength": "Video title must be 3–120 characters",
+    "descriptionLength": "Description must be 3–10000 characters"
   }
 }
