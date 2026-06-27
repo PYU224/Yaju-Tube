@@ -279,6 +279,35 @@ describe('uploadVideo (native init + chunked body)', () => {
     expect((chunk[1] as Blob).size).toBe(oneMiB);
   });
 
+  it('honors an abort that lands while the final (uninterruptible) native chunk is in flight', async () => {
+    const oneMiB = 1024 * 1024;
+    const file = makeFile(oneMiB);
+    const controller = new AbortController();
+
+    mockedRequest
+      // Init succeeds (not yet aborted).
+      .mockResolvedValueOnce({ status: 201, headers: { Location: '?upload_id=UPLATE' }, data: '' })
+      // The native chunk PUT can't be aborted mid-flight: the user taps Cancel
+      // while it is in flight, so it still completes 200 — but the signal is now
+      // aborted and the upload must NOT be reported as a success.
+      .mockImplementationOnce(async () => {
+        controller.abort();
+        return { status: 200, headers: {}, data: { video: { uuid: 'should-not-win' } } };
+      });
+
+    await expect(
+      uploadVideo({
+        host: 'peertube.example',
+        token: 'tok',
+        file,
+        name: 'n',
+        channelId: 1,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mockedAxiosPut).not.toHaveBeenCalled();
+  });
+
   it('deletes the orphaned server upload when aborted mid native init', async () => {
     const file = makeFile(1024 * 1024);
     const controller = new AbortController();

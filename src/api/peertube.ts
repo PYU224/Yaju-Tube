@@ -490,6 +490,17 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
         };
       }
 
+      // A native chunk PUT can't be interrupted once dispatched (CapacitorHttp
+      // has no mid-flight abort), so a Cancel during the final chunk would
+      // otherwise still resolve the upload as a success. Honor the abort the
+      // moment the request returns — before reading the uuid or reporting
+      // progress — mirroring the post-init abort handling in uploadVideo. (On
+      // web axios already rejects an aborted request mid-flight; this is a
+      // harmless extra guard there.)
+      if (opts.signal?.aborted) {
+        throw new DOMException('Upload aborted', 'AbortError');
+      }
+
       const elapsedMs = Date.now() - startedAt;
 
       if (res.status === 200) {
