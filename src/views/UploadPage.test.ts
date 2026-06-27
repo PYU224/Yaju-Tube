@@ -281,6 +281,32 @@ describe('UploadPage', () => {
     expect(wrapper.text()).toContain(i18n.global.t('upload.nameLength'))
   })
 
+  it('rejects a non-empty description shorter than 3 characters', async () => {
+    const { wrapper } = await mountUploadPage(({ authStore }) => {
+      authStore.setSession({
+        accessToken: 'token',
+        username: 'yaju',
+        host: '810video.com',
+        channels: [channel()],
+      })
+    })
+
+    const file = new File(['data'], 'clip.mp4', { type: 'video/mp4' })
+    const fileInput = wrapper.get('[data-testid="file-input"]')
+    Object.defineProperty(fileInput.element, 'files', { value: [file], configurable: true })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    // Name defaults to 'clip' (valid); supply an invalid 2-character description.
+    await wrapper.get('textarea').setValue('ab')
+
+    await wrapper.get('[aria-label="start-upload"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedUploadVideo).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain(i18n.global.t('upload.descriptionLength'))
+  })
+
   it('blocks upload and shows the no-channel message when the account has no channel', async () => {
     const { wrapper } = await mountUploadPage(({ authStore }) => {
       authStore.setSession({

@@ -128,6 +128,7 @@
     "resumeNotice": "Es gibt einen unterbrochenen Upload „{name}“. Wählen Sie dieselbe Videodatei, um fortzufahren",
     "resume": "Fortsetzen",
     "discard": "Verwerfen",
-    "nameLength": "Der Videotitel muss 3–120 Zeichen lang sein"
+    "nameLength": "Der Videotitel muss 3–120 Zeichen lang sein",
+    "descriptionLength": "Die Beschreibung muss 3–10000 Zeichen lang sein"
   }
 }

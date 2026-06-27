@@ -412,6 +412,57 @@ describe('initResumableUpload', () => {
     expect('description' in body).toBe(false);
   });
 
+  it('omits an empty or blank description so PeerTube does not reject init with 400', async () => {
+    const file = makeFile(10);
+    mockedPost.mockResolvedValueOnce({ headers: { location: '?upload_id=E1' } });
+
+    await initResumableUpload({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+      description: '   ',
+    });
+
+    const body = callArgs(mockedPost, 0)[1] as Record<string, unknown>;
+    expect('description' in body).toBe(false);
+  });
+
+  it('omits a too-short description (< 3 chars) that PeerTube would reject', async () => {
+    const file = makeFile(10);
+    mockedPost.mockResolvedValueOnce({ headers: { location: '?upload_id=E2' } });
+
+    await initResumableUpload({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+      description: 'ab',
+    });
+
+    const body = callArgs(mockedPost, 0)[1] as Record<string, unknown>;
+    expect('description' in body).toBe(false);
+  });
+
+  it('sends a valid description trimmed of surrounding whitespace', async () => {
+    const file = makeFile(10);
+    mockedPost.mockResolvedValueOnce({ headers: { location: '?upload_id=E3' } });
+
+    await initResumableUpload({
+      host: 'peertube.example',
+      token: 'tok',
+      file,
+      name: 'n',
+      channelId: 1,
+      description: '  hello world  ',
+    });
+
+    const body = callArgs(mockedPost, 0)[1] as Record<string, unknown>;
+    expect(body['description']).toBe('hello world');
+  });
+
   it('throws when no upload_id is present', async () => {
     const file = makeFile(10);
     mockedPost.mockResolvedValueOnce({ headers: { location: 'no-id-here' } });
