@@ -481,9 +481,17 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
   if (p.description !== undefined) initParams.description = p.description;
   if (p.signal) initParams.signal = p.signal;
   const { uploadId, existing } = await initResumableUpload(initParams);
-  // If the user cancelled while init was in flight, abort before persisting the
-  // session via onInit so a cancelled upload isn't resurrected as pending.
+  // If the user cancelled while init was in flight, the server still created the
+  // upload session — and on native the request can't be aborted mid-flight, so it
+  // always completes. Delete it server-side before surfacing the abort so it isn't
+  // orphaned. We do NOT call onInit, so the UI never persists it as pending; the
+  // cleanup is best-effort and the abort is reported regardless of its outcome.
   if (p.signal?.aborted) {
+    try {
+      await cancelUpload({ host: p.host, token: p.token, uploadId });
+    } catch {
+      // best-effort: surface the original abort even if cleanup fails
+    }
     throw new DOMException('Upload aborted', 'AbortError');
   }
   if (p.onInit) p.onInit(uploadId);

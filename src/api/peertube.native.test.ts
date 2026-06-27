@@ -200,4 +200,39 @@ describe('uploadVideo (native init + chunked body)', () => {
     const chunk = mockedAxiosPut.mock.calls[0]!;
     expect(chunk[2].headers['Content-Range']).toBe(`bytes 0-${oneMiB - 1}/${oneMiB}`);
   });
+
+  it('deletes the orphaned server upload when aborted mid native init', async () => {
+    const file = makeFile(1024 * 1024);
+    const controller = new AbortController();
+    // The native init can't be aborted mid-flight, so it completes and creates the
+    // upload; the user taps Cancel while it is in flight (abort during the request).
+    mockedRequest.mockImplementationOnce(async () => {
+      controller.abort();
+      return { status: 201, headers: { Location: '?upload_id=UPABORT' }, data: '' };
+    });
+    const mockedAxiosDelete = axios.delete as unknown as Mock;
+    mockedAxiosDelete.mockResolvedValueOnce(undefined);
+
+    const onInit = vi.fn();
+    await expect(
+      uploadVideo({
+        host: 'peertube.example',
+        token: 'tok',
+        file,
+        name: 'n',
+        channelId: 1,
+        signal: controller.signal,
+        onInit,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    // The created-but-untracked upload is cleaned up server-side, never surfaced as
+    // pending (onInit not called), and no chunk is sent.
+    expect(mockedAxiosDelete).toHaveBeenCalledWith(
+      'https://peertube.example/api/v1/videos/upload-resumable?upload_id=UPABORT',
+      { headers: { Authorization: 'Bearer tok' } },
+    );
+    expect(onInit).not.toHaveBeenCalled();
+    expect(mockedAxiosPut).not.toHaveBeenCalled();
+  });
 });
