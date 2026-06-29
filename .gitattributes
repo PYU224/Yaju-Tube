@@ -1,6 +1,3 @@
-* text=auto
-
-*.bat text eol=crlf
-.github/workflows/*.yml text eol=lf
-package.json text eol=lf
-package-lock.json text eol=lf
+# Normalize all text files to LF in the repository and working tree.
+# Binary files are auto-detected (text=auto) and left untouched.
+* text=auto eol=lf
