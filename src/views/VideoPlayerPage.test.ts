@@ -7,6 +7,7 @@ import i18n from '@/i18n'
 import { useHistoryStore } from '@/stores/historyStore'
 import { useInstanceStore } from '@/stores/instanceStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { axiosError } from '@/testUtils'
 import VideoPlayerPage from './VideoPlayerPage.vue'
 
 const peerTubeMocks = vi.hoisted(() => ({
@@ -88,16 +89,6 @@ type VideoResponse = {
   }
 }
 
-type AxiosLikeError = Error & {
-  isAxiosError: true
-  code?: string
-  response?: {
-    status: number
-    statusText: string
-  }
-  request?: object
-}
-
 const videoResponse: VideoResponse = {
   uuid: 'video-1',
   name: 'Playable PeerTube Video',
@@ -132,13 +123,6 @@ function mockVideo(response: VideoResponse = videoResponse) {
   vi.mocked(axios.get).mockResolvedValue({
     data: response,
   } as AxiosResponse<VideoResponse>)
-}
-
-function axiosError(overrides: Omit<Partial<AxiosLikeError>, 'isAxiosError'> = {}): AxiosLikeError {
-  return Object.assign(new Error('Request failed'), {
-    isAxiosError: true as const,
-    ...overrides,
-  })
 }
 
 async function mountVideoPlayerPage(

@@ -27,6 +27,7 @@ vi.mock('@capacitor/device', () => ({
 import axios from 'axios';
 import { CapacitorHttp } from '@capacitor/core';
 import { Device } from '@capacitor/device';
+import { makeFile } from '@/testUtils';
 import {
   getResumeOffset,
   initResumableUpload,
@@ -38,10 +39,6 @@ const mockedRequest = CapacitorHttp.request as unknown as Mock;
 const mockedAxiosPost = axios.post as unknown as Mock;
 const mockedAxiosPut = axios.put as unknown as Mock;
 const mockedGetInfo = Device.getInfo as unknown as Mock;
-
-function makeFile(size: number): File {
-  return new File([new Uint8Array(size)], 'v.mp4', { type: 'video/mp4' });
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
