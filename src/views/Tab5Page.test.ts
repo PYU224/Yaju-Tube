@@ -1,6 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import {
@@ -9,6 +8,7 @@ import {
   usePlaylistStore,
 } from '@/stores/playlistStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { createTestRouter, testGlobal } from '@/testUtils'
 import Tab5Page from './Tab5Page.vue'
 
 type AlertButton = {
@@ -102,21 +102,15 @@ async function mountTab5Page(setup?: (stores: {
   const settingsStore = useSettingsStore()
   setup?.({ playlistStore, settingsStore })
 
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/tabs/tab5', component: { template: '<div />' } },
-      { path: '/tabs/video/:videoId', component: { template: '<div />' } },
-    ],
-  })
+  const router = createTestRouter([
+    { path: '/tabs/tab5', component: { template: '<div />' } },
+    { path: '/tabs/video/:videoId', component: { template: '<div />' } },
+  ])
   await router.push('/tabs/tab5')
   await router.isReady()
 
   const wrapper = mount(Tab5Page, {
-    global: {
-      plugins: [pinia, router, i18n],
-      stubs: ionicStubs,
-    },
+    global: testGlobal(pinia, router, ionicStubs),
   })
   await flushPromises()
 

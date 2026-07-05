@@ -64,6 +64,14 @@ export function apiBase(host: string): string {
   return 'https://' + normalizeHost(host) + '/api/v1';
 }
 
+// Builds the resumable-upload endpoint URL for a host, optionally targeting an
+// in-progress upload via its `upload_id` query parameter. Centralizes the
+// endpoint path shared by init, chunk PUT, resume probe, and cancel.
+function resumableUploadUrl(host: string, uploadId?: string): string {
+  const base = apiBase(host) + '/videos/upload-resumable';
+  return uploadId !== undefined ? base + '?upload_id=' + uploadId : base;
+}
+
 // ----- Resumable-upload HTTP plumbing --------------------------------------
 // PeerTube's resumable upload exposes the new upload's id only in the `Location`
 // response header (init) and the already-stored byte count only in the `Range`
@@ -313,7 +321,10 @@ export async function getMyAccount(p: { host: string; token: string }): Promise<
   };
 }
 
-export interface UploadParams {
+// The parameters initResumableUpload needs to create (or re-open) a server-side
+// resumable session. UploadParams builds on these with progress/lifecycle
+// callbacks for the full client-driven upload.
+export interface InitResumableUploadParams {
   host: string;
   token: string;
   file: File;
@@ -321,11 +332,14 @@ export interface UploadParams {
   channelId: number;
   privacy?: VideoPrivacy;
   description?: string;
+  signal?: AbortSignal;
+}
+
+export interface UploadParams extends InitResumableUploadParams {
   onProgress?: (uploaded: number, total: number) => void;
   // Called once the resumable session is created, exposing its upload_id so the
   // caller can cancel the server-side upload (cancelUpload) if it is aborted.
   onInit?: (uploadId: string) => void;
-  signal?: AbortSignal;
 }
 
 export interface UploadResult {
@@ -352,16 +366,7 @@ export interface InitResult {
   existing: boolean;
 }
 
-export async function initResumableUpload(p: {
-  host: string;
-  token: string;
-  file: File;
-  name: string;
-  channelId: number;
-  privacy?: VideoPrivacy;
-  description?: string;
-  signal?: AbortSignal;
-}): Promise<InitResult> {
+export async function initResumableUpload(p: InitResumableUploadParams): Promise<InitResult> {
   const body: Record<string, unknown> = {
     filename: p.file.name,
     name: p.name,
@@ -386,7 +391,7 @@ export async function initResumableUpload(p: {
     Authorization: 'Bearer ' + p.token,
   };
   const validateStatus = (s: number) => s === 200 || s === 201;
-  const url = apiBase(p.host) + '/videos/upload-resumable';
+  const url = resumableUploadUrl(p.host);
 
   // The upload_id is returned only in the `Location` header, which CORS hides from
   // the WebView — so read it via native HTTP on native platforms, axios on web.
@@ -467,7 +472,7 @@ interface ChunkLoopOptions {
 // (fresh upload) and resumeUpload (continuing an interrupted one).
 async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
   const total = opts.file.size;
-  const url = apiBase(opts.host) + '/videos/upload-resumable?upload_id=' + opts.uploadId;
+  const url = resumableUploadUrl(opts.host, opts.uploadId);
 
   const useNativeChunk = await nativeChunkSupported();
   let chunkSize = CHUNK_START;
@@ -573,17 +578,30 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
   return uuid;
 }
 
+// Runs the chunk loop for an already-initialised session and wraps the resulting
+// uuid as an UploadResult. Copies the optional onProgress/signal only when
+// present (exactOptionalPropertyTypes forbids assigning undefined to an optional
+// field), so the fresh-upload and resume paths share one place that does it.
+async function runChunkUpload(
+  base: { host: string; token: string; uploadId: string; file: File; startOffset?: number },
+  optional: { onProgress?: (uploaded: number, total: number) => void; signal?: AbortSignal },
+): Promise<UploadResult> {
+  const loopOpts: ChunkLoopOptions = {
+    host: base.host,
+    token: base.token,
+    uploadId: base.uploadId,
+    file: base.file,
+  };
+  if (base.startOffset !== undefined) loopOpts.startOffset = base.startOffset;
+  if (optional.onProgress) loopOpts.onProgress = optional.onProgress;
+  if (optional.signal) loopOpts.signal = optional.signal;
+
+  const uuid = await runChunkLoop(loopOpts);
+  return { uuid };
+}
+
 export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
-  const initParams: {
-    host: string;
-    token: string;
-    file: File;
-    name: string;
-    channelId: number;
-    privacy?: VideoPrivacy;
-    description?: string;
-    signal?: AbortSignal;
-  } = {
+  const initParams: InitResumableUploadParams = {
     host: p.host,
     token: p.token,
     file: p.file,
@@ -623,17 +641,7 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
     return resumeUpload(resumeParams);
   }
 
-  const loopOpts: ChunkLoopOptions = {
-    host: p.host,
-    token: p.token,
-    uploadId,
-    file: p.file,
-  };
-  if (p.onProgress) loopOpts.onProgress = p.onProgress;
-  if (p.signal) loopOpts.signal = p.signal;
-
-  const uuid = await runChunkLoop(loopOpts);
-  return { uuid };
+  return runChunkUpload({ host: p.host, token: p.token, uploadId, file: p.file }, p);
 }
 
 export interface ResumeProbe {
@@ -653,7 +661,7 @@ export async function getResumeOffset(p: {
   uploadId: string;
   fileSize: number;
 }): Promise<ResumeProbe> {
-  const url = apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId;
+  const url = resumableUploadUrl(p.host, p.uploadId);
   const headers: Record<string, string> = {
     'Content-Type': 'application/octet-stream',
     'Content-Range': 'bytes */' + p.fileSize,
@@ -713,18 +721,10 @@ export async function resumeUpload(p: ResumeParams): Promise<UploadResult> {
     return { uuid: probe.uuid };
   }
 
-  const loopOpts: ChunkLoopOptions = {
-    host: p.host,
-    token: p.token,
-    uploadId: p.uploadId,
-    file: p.file,
-    startOffset: probe.offset,
-  };
-  if (p.onProgress) loopOpts.onProgress = p.onProgress;
-  if (p.signal) loopOpts.signal = p.signal;
-
-  const uuid = await runChunkLoop(loopOpts);
-  return { uuid };
+  return runChunkUpload(
+    { host: p.host, token: p.token, uploadId: p.uploadId, file: p.file, startOffset: probe.offset },
+    p,
+  );
 }
 
 export async function cancelUpload(p: {
@@ -732,12 +732,9 @@ export async function cancelUpload(p: {
   token: string;
   uploadId: string;
 }): Promise<void> {
-  await axios.delete(
-    apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId,
-    {
-      headers: bearerAuth(p.token),
-    },
-  );
+  await axios.delete(resumableUploadUrl(p.host, p.uploadId), {
+    headers: bearerAuth(p.token),
+  });
 }
 
 export async function updateVideo(p: {

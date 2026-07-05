@@ -1,12 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { SavedVideoRef } from '@/types/video'
 
-export interface PlaylistItem {
-  videoId: string
-  videoName: string
-  thumbnailPath: string
-  channelName: string
-  instanceUrl: string
+export interface PlaylistItem extends SavedVideoRef {
   addedAt: number
 }
 

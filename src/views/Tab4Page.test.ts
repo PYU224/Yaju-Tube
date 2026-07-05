@@ -1,9 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { type HistoryItem, useHistoryStore } from '@/stores/historyStore'
+import { createTestRouter, testGlobal } from '@/testUtils'
 import Tab4Page from './Tab4Page.vue'
 
 type AlertButton = {
@@ -87,21 +87,15 @@ async function mountTab4Page(setupHistory?: (historyStore: ReturnType<typeof use
   const historyStore = useHistoryStore()
   setupHistory?.(historyStore)
 
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/tabs/tab4', component: { template: '<div />' } },
-      { path: '/tabs/video/:videoId', component: { template: '<div />' } },
-    ],
-  })
+  const router = createTestRouter([
+    { path: '/tabs/tab4', component: { template: '<div />' } },
+    { path: '/tabs/video/:videoId', component: { template: '<div />' } },
+  ])
   await router.push('/tabs/tab4')
   await router.isReady()
 
   const wrapper = mount(Tab4Page, {
-    global: {
-      plugins: [pinia, router, i18n],
-      stubs: ionicStubs,
-    },
+    global: testGlobal(pinia, router, ionicStubs),
   })
   await flushPromises()
 
