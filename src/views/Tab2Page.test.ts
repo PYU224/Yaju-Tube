@@ -8,6 +8,7 @@ import i18n from '@/i18n'
 import { useInstanceStore } from '@/stores/instanceStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { Video, VideoListResponse } from '@/types/video'
+import { axiosError } from '@/testUtils'
 import Tab2Page from './Tab2Page.vue'
 
 vi.mock('@/api', () => ({
@@ -37,16 +38,6 @@ const localVideo: Video = {
     host: '810video.com',
   },
   publishedAt: '2026-05-04T01:00:00.000Z',
-}
-
-type AxiosLikeError = Error & {
-  isAxiosError: true
-  code?: string
-  response?: {
-    status: number
-    statusText: string
-  }
-  request?: object
 }
 
 const ionicStubs = {
@@ -129,13 +120,6 @@ function mockRawVideoListData(data: Partial<VideoListResponse>) {
   vi.mocked(API.get).mockResolvedValue({
     data,
   } as AxiosResponse<Partial<VideoListResponse>>)
-}
-
-function axiosError(overrides: Omit<Partial<AxiosLikeError>, 'isAxiosError'> = {}): AxiosLikeError {
-  return Object.assign(new Error('Request failed'), {
-    isAxiosError: true as const,
-    ...overrides,
-  })
 }
 
 async function mountTab2Page() {

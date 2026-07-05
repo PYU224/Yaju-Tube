@@ -9,23 +9,19 @@ export interface OAuthClient {
   client_secret: string;
 }
 
-export interface LoginResult {
-  accessToken: string;
-  refreshToken: string;
-  tokenType: string;
-  // OAuth client credentials are returned so the session can later refresh the
-  // access token without re-fetching them from the instance.
-  clientId: string;
-  clientSecret: string;
-  // Access-token lifetime in seconds (PeerTube `expires_in`), when provided.
-  expiresIn?: number;
-}
-
 export interface RefreshResult {
   accessToken: string;
   refreshToken: string;
   tokenType: string;
+  // Access-token lifetime in seconds (PeerTube `expires_in`), when provided.
   expiresIn?: number;
+}
+
+export interface LoginResult extends RefreshResult {
+  // OAuth client credentials are returned so the session can later refresh the
+  // access token without re-fetching them from the instance.
+  clientId: string;
+  clientSecret: string;
 }
 
 export interface VideoChannel {
@@ -106,6 +102,42 @@ function lowerCaseHeaders(headers: Record<string, string> | undefined): Record<s
   return out;
 }
 
+// Reshapes an axios response into the transport-neutral NormalizedResponse used
+// throughout the resumable-upload code, lowercasing headers so `location` /
+// `range` lookups behave identically to the native-HTTP path.
+function normalizeAxiosResponse(axiosRes: {
+  status: number;
+  headers: unknown;
+  data: unknown;
+}): NormalizedResponse {
+  return {
+    status: axiosRes.status,
+    headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
+    data: axiosRes.data,
+  };
+}
+
+// Raises the same AbortError the transports throw when an upload is cancelled,
+// so the abort checkpoints in nativeRequest and the chunk loop share one
+// definition.
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('Upload aborted', 'AbortError');
+  }
+}
+
+// The bearer-token Authorization header sent with every authenticated request.
+function bearerAuth(token: string): { Authorization: string } {
+  return { Authorization: 'Bearer ' + token };
+}
+
+// Reads the finished video's uuid out of a resumable response body. PeerTube
+// returns it as `{ video: { uuid } }` on the completing (200) response; anything
+// else yields undefined.
+function extractVideoUuid(data: unknown): string | undefined {
+  return (data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
+}
+
 // CapacitorHttp resolves for every completed exchange instead of rejecting on
 // 4xx/5xx the way axios' validateStatus does. Re-create that rejection with an
 // axios-shaped error so shared error handling that inspects `err.response.status`
@@ -136,9 +168,7 @@ async function nativeRequest(opts: {
   validateStatus: (status: number) => boolean;
   signal?: AbortSignal;
 }): Promise<NormalizedResponse> {
-  if (opts.signal?.aborted) {
-    throw new DOMException('Upload aborted', 'AbortError');
-  }
+  throwIfAborted(opts.signal);
   const res = await CapacitorHttp.request({
     url: opts.url,
     method: opts.method,
@@ -191,6 +221,24 @@ export async function getOAuthClient(host: string): Promise<OAuthClient> {
   };
 }
 
+// Maps PeerTube's snake_case token payload onto the camelCase RefreshResult
+// shape, attaching expiresIn only when the server reports it (so callers that
+// compare the result by shape don't see a spurious `expiresIn: undefined`).
+function toRefreshResult(data: {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in?: number;
+}): RefreshResult {
+  const result: RefreshResult = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    tokenType: data.token_type,
+  };
+  if (data.expires_in !== undefined) result.expiresIn = data.expires_in;
+  return result;
+}
+
 export async function login(p: {
   host: string;
   username: string;
@@ -213,15 +261,11 @@ export async function login(p: {
 
   try {
     const res = await axios.post(apiBase(p.host) + '/users/token', body, { headers });
-    const result: LoginResult = {
-      accessToken: res.data.access_token,
-      refreshToken: res.data.refresh_token,
-      tokenType: res.data.token_type,
+    return {
+      ...toRefreshResult(res.data),
       clientId: client.client_id,
       clientSecret: client.client_secret,
     };
-    if (res.data.expires_in !== undefined) result.expiresIn = res.data.expires_in;
-    return result;
   } catch (err) {
     // PeerTube reports its 2FA failures via `code` (e.g. missing_two_factor),
     // while the OAuth2 layer reports bad credentials via the standard `error`
@@ -256,18 +300,12 @@ export async function refreshAccessToken(p: {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 
-  const result: RefreshResult = {
-    accessToken: res.data.access_token,
-    refreshToken: res.data.refresh_token,
-    tokenType: res.data.token_type,
-  };
-  if (res.data.expires_in !== undefined) result.expiresIn = res.data.expires_in;
-  return result;
+  return toRefreshResult(res.data);
 }
 
 export async function getMyAccount(p: { host: string; token: string }): Promise<MyAccount> {
   const res = await axios.get(apiBase(p.host) + '/users/me', {
-    headers: { Authorization: 'Bearer ' + p.token },
+    headers: bearerAuth(p.token),
   });
   return {
     username: res.data.account?.username ?? res.data.username,
@@ -367,11 +405,7 @@ export async function initResumableUpload(p: {
     const config: AxiosRequestConfig = { headers, validateStatus };
     if (p.signal) config.signal = p.signal;
     const axiosRes = await axios.post(url, body, config);
-    res = {
-      status: axiosRes.status,
-      headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
-      data: axiosRes.data,
-    };
+    res = normalizeAxiosResponse(axiosRes);
   }
 
   const location: string = res.headers['location'] ?? '';
@@ -442,9 +476,7 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
   let uuid: string | undefined;
 
   while (start < total) {
-    if (opts.signal?.aborted) {
-      throw new DOMException('Upload aborted', 'AbortError');
-    }
+    throwIfAborted(opts.signal);
 
     const size = Math.min(chunkSize, total - start);
     const end = start + size;
@@ -483,11 +515,7 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
         const config: AxiosRequestConfig = { headers: chunkHeaders, validateStatus };
         if (opts.signal) config.signal = opts.signal;
         const axiosRes = await axios.put(url, blob, config);
-        res = {
-          status: axiosRes.status,
-          headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
-          data: axiosRes.data,
-        };
+        res = normalizeAxiosResponse(axiosRes);
       }
 
       // A native chunk PUT can't be interrupted once dispatched (CapacitorHttp
@@ -497,14 +525,12 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
       // progress — mirroring the post-init abort handling in uploadVideo. (On
       // web axios already rejects an aborted request mid-flight; this is a
       // harmless extra guard there.)
-      if (opts.signal?.aborted) {
-        throw new DOMException('Upload aborted', 'AbortError');
-      }
+      throwIfAborted(opts.signal);
 
       const elapsedMs = Date.now() - startedAt;
 
       if (res.status === 200) {
-        uuid = (res.data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
+        uuid = extractVideoUuid(res.data);
       }
 
       // Advance from the byte the server acknowledges (308 Range header) rather
@@ -642,11 +668,7 @@ export async function getResumeOffset(p: {
     res = await nativeRequest({ url, method: 'PUT', headers, validateStatus });
   } else {
     const axiosRes = await axios.put(url, undefined, { headers, validateStatus });
-    res = {
-      status: axiosRes.status,
-      headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
-      data: axiosRes.data,
-    };
+    res = normalizeAxiosResponse(axiosRes);
   }
 
   const acked = parseAckedEnd(res.headers);
@@ -656,7 +678,7 @@ export async function getResumeOffset(p: {
   // 200/201 means the server already has the whole file and returns the video.
   if (res.status === 200 || res.status === 201) {
     const result: ResumeProbe = { offset: p.fileSize };
-    const uuid = (res.data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
+    const uuid = extractVideoUuid(res.data);
     if (uuid) result.uuid = uuid;
     return result;
   }
@@ -713,7 +735,7 @@ export async function cancelUpload(p: {
   await axios.delete(
     apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId,
     {
-      headers: { Authorization: 'Bearer ' + p.token },
+      headers: bearerAuth(p.token),
     },
   );
 }
@@ -725,6 +747,6 @@ export async function updateVideo(p: {
   data: Record<string, unknown>;
 }): Promise<void> {
   await axios.put(apiBase(p.host) + '/videos/' + p.uuid, p.data, {
-    headers: { Authorization: 'Bearer ' + p.token },
+    headers: bearerAuth(p.token),
   });
 }

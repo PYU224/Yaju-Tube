@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
+import { makeFile } from '@/testUtils';
 import {
   apiBase,
   cancelUpload,
@@ -31,10 +32,6 @@ const mockedGet = axios.get as unknown as Mock;
 const mockedPost = axios.post as unknown as Mock;
 const mockedPut = axios.put as unknown as Mock;
 const mockedDelete = axios.delete as unknown as Mock;
-
-function makeFile(size: number): File {
-  return new File([new Uint8Array(size)], 'v.mp4', { type: 'video/mp4' });
-}
 
 // Returns the arguments of the nth call to a mock, typed as a non-undefined
 // tuple so that strict `noUncheckedIndexedAccess` access stays clean in tests.
