@@ -1,14 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import type { AxiosResponse } from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import API from '@/api'
 import i18n from '@/i18n'
 import { useInstanceStore } from '@/stores/instanceStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { Video, VideoListResponse } from '@/types/video'
-import { axiosError } from '@/testUtils'
+import { axiosError, createTestRouter, testGlobal } from '@/testUtils'
 import Tab2Page from './Tab2Page.vue'
 
 vi.mock('@/api', () => ({
@@ -127,21 +126,15 @@ async function mountTab2Page() {
   setActivePinia(pinia)
   const instanceStore = useInstanceStore()
   const settingsStore = useSettingsStore()
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/tabs/tab2', component: { template: '<div />' } },
-      { path: '/tabs/video/:videoId', component: { template: '<div />' } },
-    ],
-  })
+  const router = createTestRouter([
+    { path: '/tabs/tab2', component: { template: '<div />' } },
+    { path: '/tabs/video/:videoId', component: { template: '<div />' } },
+  ])
   await router.push('/tabs/tab2')
   await router.isReady()
 
   const wrapper = mount(Tab2Page, {
-    global: {
-      plugins: [pinia, router, i18n],
-      stubs: ionicStubs,
-    },
+    global: testGlobal(pinia, router, ionicStubs),
   })
   await flushPromises()
 

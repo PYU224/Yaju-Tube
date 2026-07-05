@@ -1,13 +1,9 @@
 // src/stores/historyStore.ts
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import type { SavedVideoRef } from '@/types/video';
 
-export interface HistoryItem {
-  videoId: string;
-  videoName: string;
-  thumbnailPath: string;
-  channelName: string;
-  instanceUrl: string;
+export interface HistoryItem extends SavedVideoRef {
   watchedAt: number; // タイムスタンプ
   progress?: number; // 再生位置（秒）
   duration?: number; // 動画の長さ（秒）
