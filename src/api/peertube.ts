@@ -9,23 +9,19 @@ export interface OAuthClient {
   client_secret: string;
 }
 
-export interface LoginResult {
-  accessToken: string;
-  refreshToken: string;
-  tokenType: string;
-  // OAuth client credentials are returned so the session can later refresh the
-  // access token without re-fetching them from the instance.
-  clientId: string;
-  clientSecret: string;
-  // Access-token lifetime in seconds (PeerTube `expires_in`), when provided.
-  expiresIn?: number;
-}
-
 export interface RefreshResult {
   accessToken: string;
   refreshToken: string;
   tokenType: string;
+  // Access-token lifetime in seconds (PeerTube `expires_in`), when provided.
   expiresIn?: number;
+}
+
+export interface LoginResult extends RefreshResult {
+  // OAuth client credentials are returned so the session can later refresh the
+  // access token without re-fetching them from the instance.
+  clientId: string;
+  clientSecret: string;
 }
 
 export interface VideoChannel {
@@ -68,6 +64,14 @@ export function apiBase(host: string): string {
   return 'https://' + normalizeHost(host) + '/api/v1';
 }
 
+// Builds the resumable-upload endpoint URL for a host, optionally targeting an
+// in-progress upload via its `upload_id` query parameter. Centralizes the
+// endpoint path shared by init, chunk PUT, resume probe, and cancel.
+function resumableUploadUrl(host: string, uploadId?: string): string {
+  const base = apiBase(host) + '/videos/upload-resumable';
+  return uploadId !== undefined ? base + '?upload_id=' + uploadId : base;
+}
+
 // ----- Resumable-upload HTTP plumbing --------------------------------------
 // PeerTube's resumable upload exposes the new upload's id only in the `Location`
 // response header (init) and the already-stored byte count only in the `Range`
@@ -106,6 +110,42 @@ function lowerCaseHeaders(headers: Record<string, string> | undefined): Record<s
   return out;
 }
 
+// Reshapes an axios response into the transport-neutral NormalizedResponse used
+// throughout the resumable-upload code, lowercasing headers so `location` /
+// `range` lookups behave identically to the native-HTTP path.
+function normalizeAxiosResponse(axiosRes: {
+  status: number;
+  headers: unknown;
+  data: unknown;
+}): NormalizedResponse {
+  return {
+    status: axiosRes.status,
+    headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
+    data: axiosRes.data,
+  };
+}
+
+// Raises the same AbortError the transports throw when an upload is cancelled,
+// so the abort checkpoints in nativeRequest and the chunk loop share one
+// definition.
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('Upload aborted', 'AbortError');
+  }
+}
+
+// The bearer-token Authorization header sent with every authenticated request.
+function bearerAuth(token: string): { Authorization: string } {
+  return { Authorization: 'Bearer ' + token };
+}
+
+// Reads the finished video's uuid out of a resumable response body. PeerTube
+// returns it as `{ video: { uuid } }` on the completing (200) response; anything
+// else yields undefined.
+function extractVideoUuid(data: unknown): string | undefined {
+  return (data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
+}
+
 // CapacitorHttp resolves for every completed exchange instead of rejecting on
 // 4xx/5xx the way axios' validateStatus does. Re-create that rejection with an
 // axios-shaped error so shared error handling that inspects `err.response.status`
@@ -136,9 +176,7 @@ async function nativeRequest(opts: {
   validateStatus: (status: number) => boolean;
   signal?: AbortSignal;
 }): Promise<NormalizedResponse> {
-  if (opts.signal?.aborted) {
-    throw new DOMException('Upload aborted', 'AbortError');
-  }
+  throwIfAborted(opts.signal);
   const res = await CapacitorHttp.request({
     url: opts.url,
     method: opts.method,
@@ -191,6 +229,24 @@ export async function getOAuthClient(host: string): Promise<OAuthClient> {
   };
 }
 
+// Maps PeerTube's snake_case token payload onto the camelCase RefreshResult
+// shape, attaching expiresIn only when the server reports it (so callers that
+// compare the result by shape don't see a spurious `expiresIn: undefined`).
+function toRefreshResult(data: {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in?: number;
+}): RefreshResult {
+  const result: RefreshResult = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    tokenType: data.token_type,
+  };
+  if (data.expires_in !== undefined) result.expiresIn = data.expires_in;
+  return result;
+}
+
 export async function login(p: {
   host: string;
   username: string;
@@ -213,15 +269,11 @@ export async function login(p: {
 
   try {
     const res = await axios.post(apiBase(p.host) + '/users/token', body, { headers });
-    const result: LoginResult = {
-      accessToken: res.data.access_token,
-      refreshToken: res.data.refresh_token,
-      tokenType: res.data.token_type,
+    return {
+      ...toRefreshResult(res.data),
       clientId: client.client_id,
       clientSecret: client.client_secret,
     };
-    if (res.data.expires_in !== undefined) result.expiresIn = res.data.expires_in;
-    return result;
   } catch (err) {
     // PeerTube reports its 2FA failures via `code` (e.g. missing_two_factor),
     // while the OAuth2 layer reports bad credentials via the standard `error`
@@ -256,18 +308,12 @@ export async function refreshAccessToken(p: {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 
-  const result: RefreshResult = {
-    accessToken: res.data.access_token,
-    refreshToken: res.data.refresh_token,
-    tokenType: res.data.token_type,
-  };
-  if (res.data.expires_in !== undefined) result.expiresIn = res.data.expires_in;
-  return result;
+  return toRefreshResult(res.data);
 }
 
 export async function getMyAccount(p: { host: string; token: string }): Promise<MyAccount> {
   const res = await axios.get(apiBase(p.host) + '/users/me', {
-    headers: { Authorization: 'Bearer ' + p.token },
+    headers: bearerAuth(p.token),
   });
   return {
     username: res.data.account?.username ?? res.data.username,
@@ -275,7 +321,10 @@ export async function getMyAccount(p: { host: string; token: string }): Promise<
   };
 }
 
-export interface UploadParams {
+// The parameters initResumableUpload needs to create (or re-open) a server-side
+// resumable session. UploadParams builds on these with progress/lifecycle
+// callbacks for the full client-driven upload.
+export interface InitResumableUploadParams {
   host: string;
   token: string;
   file: File;
@@ -283,11 +332,14 @@ export interface UploadParams {
   channelId: number;
   privacy?: VideoPrivacy;
   description?: string;
+  signal?: AbortSignal;
+}
+
+export interface UploadParams extends InitResumableUploadParams {
   onProgress?: (uploaded: number, total: number) => void;
   // Called once the resumable session is created, exposing its upload_id so the
   // caller can cancel the server-side upload (cancelUpload) if it is aborted.
   onInit?: (uploadId: string) => void;
-  signal?: AbortSignal;
 }
 
 export interface UploadResult {
@@ -314,16 +366,7 @@ export interface InitResult {
   existing: boolean;
 }
 
-export async function initResumableUpload(p: {
-  host: string;
-  token: string;
-  file: File;
-  name: string;
-  channelId: number;
-  privacy?: VideoPrivacy;
-  description?: string;
-  signal?: AbortSignal;
-}): Promise<InitResult> {
+export async function initResumableUpload(p: InitResumableUploadParams): Promise<InitResult> {
   const body: Record<string, unknown> = {
     filename: p.file.name,
     name: p.name,
@@ -348,7 +391,7 @@ export async function initResumableUpload(p: {
     Authorization: 'Bearer ' + p.token,
   };
   const validateStatus = (s: number) => s === 200 || s === 201;
-  const url = apiBase(p.host) + '/videos/upload-resumable';
+  const url = resumableUploadUrl(p.host);
 
   // The upload_id is returned only in the `Location` header, which CORS hides from
   // the WebView — so read it via native HTTP on native platforms, axios on web.
@@ -367,11 +410,7 @@ export async function initResumableUpload(p: {
     const config: AxiosRequestConfig = { headers, validateStatus };
     if (p.signal) config.signal = p.signal;
     const axiosRes = await axios.post(url, body, config);
-    res = {
-      status: axiosRes.status,
-      headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
-      data: axiosRes.data,
-    };
+    res = normalizeAxiosResponse(axiosRes);
   }
 
   const location: string = res.headers['location'] ?? '';
@@ -433,7 +472,7 @@ interface ChunkLoopOptions {
 // (fresh upload) and resumeUpload (continuing an interrupted one).
 async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
   const total = opts.file.size;
-  const url = apiBase(opts.host) + '/videos/upload-resumable?upload_id=' + opts.uploadId;
+  const url = resumableUploadUrl(opts.host, opts.uploadId);
 
   const useNativeChunk = await nativeChunkSupported();
   let chunkSize = CHUNK_START;
@@ -442,9 +481,7 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
   let uuid: string | undefined;
 
   while (start < total) {
-    if (opts.signal?.aborted) {
-      throw new DOMException('Upload aborted', 'AbortError');
-    }
+    throwIfAborted(opts.signal);
 
     const size = Math.min(chunkSize, total - start);
     const end = start + size;
@@ -483,11 +520,7 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
         const config: AxiosRequestConfig = { headers: chunkHeaders, validateStatus };
         if (opts.signal) config.signal = opts.signal;
         const axiosRes = await axios.put(url, blob, config);
-        res = {
-          status: axiosRes.status,
-          headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
-          data: axiosRes.data,
-        };
+        res = normalizeAxiosResponse(axiosRes);
       }
 
       // A native chunk PUT can't be interrupted once dispatched (CapacitorHttp
@@ -497,14 +530,12 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
       // progress — mirroring the post-init abort handling in uploadVideo. (On
       // web axios already rejects an aborted request mid-flight; this is a
       // harmless extra guard there.)
-      if (opts.signal?.aborted) {
-        throw new DOMException('Upload aborted', 'AbortError');
-      }
+      throwIfAborted(opts.signal);
 
       const elapsedMs = Date.now() - startedAt;
 
       if (res.status === 200) {
-        uuid = (res.data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
+        uuid = extractVideoUuid(res.data);
       }
 
       // Advance from the byte the server acknowledges (308 Range header) rather
@@ -547,17 +578,30 @@ async function runChunkLoop(opts: ChunkLoopOptions): Promise<string> {
   return uuid;
 }
 
+// Runs the chunk loop for an already-initialised session and wraps the resulting
+// uuid as an UploadResult. Copies the optional onProgress/signal only when
+// present (exactOptionalPropertyTypes forbids assigning undefined to an optional
+// field), so the fresh-upload and resume paths share one place that does it.
+async function runChunkUpload(
+  base: { host: string; token: string; uploadId: string; file: File; startOffset?: number },
+  optional: { onProgress?: (uploaded: number, total: number) => void; signal?: AbortSignal },
+): Promise<UploadResult> {
+  const loopOpts: ChunkLoopOptions = {
+    host: base.host,
+    token: base.token,
+    uploadId: base.uploadId,
+    file: base.file,
+  };
+  if (base.startOffset !== undefined) loopOpts.startOffset = base.startOffset;
+  if (optional.onProgress) loopOpts.onProgress = optional.onProgress;
+  if (optional.signal) loopOpts.signal = optional.signal;
+
+  const uuid = await runChunkLoop(loopOpts);
+  return { uuid };
+}
+
 export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
-  const initParams: {
-    host: string;
-    token: string;
-    file: File;
-    name: string;
-    channelId: number;
-    privacy?: VideoPrivacy;
-    description?: string;
-    signal?: AbortSignal;
-  } = {
+  const initParams: InitResumableUploadParams = {
     host: p.host,
     token: p.token,
     file: p.file,
@@ -597,17 +641,7 @@ export async function uploadVideo(p: UploadParams): Promise<UploadResult> {
     return resumeUpload(resumeParams);
   }
 
-  const loopOpts: ChunkLoopOptions = {
-    host: p.host,
-    token: p.token,
-    uploadId,
-    file: p.file,
-  };
-  if (p.onProgress) loopOpts.onProgress = p.onProgress;
-  if (p.signal) loopOpts.signal = p.signal;
-
-  const uuid = await runChunkLoop(loopOpts);
-  return { uuid };
+  return runChunkUpload({ host: p.host, token: p.token, uploadId, file: p.file }, p);
 }
 
 export interface ResumeProbe {
@@ -627,7 +661,7 @@ export async function getResumeOffset(p: {
   uploadId: string;
   fileSize: number;
 }): Promise<ResumeProbe> {
-  const url = apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId;
+  const url = resumableUploadUrl(p.host, p.uploadId);
   const headers: Record<string, string> = {
     'Content-Type': 'application/octet-stream',
     'Content-Range': 'bytes */' + p.fileSize,
@@ -642,11 +676,7 @@ export async function getResumeOffset(p: {
     res = await nativeRequest({ url, method: 'PUT', headers, validateStatus });
   } else {
     const axiosRes = await axios.put(url, undefined, { headers, validateStatus });
-    res = {
-      status: axiosRes.status,
-      headers: lowerCaseHeaders(axiosRes.headers as Record<string, string>),
-      data: axiosRes.data,
-    };
+    res = normalizeAxiosResponse(axiosRes);
   }
 
   const acked = parseAckedEnd(res.headers);
@@ -656,7 +686,7 @@ export async function getResumeOffset(p: {
   // 200/201 means the server already has the whole file and returns the video.
   if (res.status === 200 || res.status === 201) {
     const result: ResumeProbe = { offset: p.fileSize };
-    const uuid = (res.data as { video?: { uuid?: string } } | undefined)?.video?.uuid;
+    const uuid = extractVideoUuid(res.data);
     if (uuid) result.uuid = uuid;
     return result;
   }
@@ -691,18 +721,10 @@ export async function resumeUpload(p: ResumeParams): Promise<UploadResult> {
     return { uuid: probe.uuid };
   }
 
-  const loopOpts: ChunkLoopOptions = {
-    host: p.host,
-    token: p.token,
-    uploadId: p.uploadId,
-    file: p.file,
-    startOffset: probe.offset,
-  };
-  if (p.onProgress) loopOpts.onProgress = p.onProgress;
-  if (p.signal) loopOpts.signal = p.signal;
-
-  const uuid = await runChunkLoop(loopOpts);
-  return { uuid };
+  return runChunkUpload(
+    { host: p.host, token: p.token, uploadId: p.uploadId, file: p.file, startOffset: probe.offset },
+    p,
+  );
 }
 
 export async function cancelUpload(p: {
@@ -710,12 +732,9 @@ export async function cancelUpload(p: {
   token: string;
   uploadId: string;
 }): Promise<void> {
-  await axios.delete(
-    apiBase(p.host) + '/videos/upload-resumable?upload_id=' + p.uploadId,
-    {
-      headers: { Authorization: 'Bearer ' + p.token },
-    },
-  );
+  await axios.delete(resumableUploadUrl(p.host, p.uploadId), {
+    headers: bearerAuth(p.token),
+  });
 }
 
 export async function updateVideo(p: {
@@ -725,6 +744,6 @@ export async function updateVideo(p: {
   data: Record<string, unknown>;
 }): Promise<void> {
   await axios.put(apiBase(p.host) + '/videos/' + p.uuid, p.data, {
-    headers: { Authorization: 'Bearer ' + p.token },
+    headers: bearerAuth(p.token),
   });
 }

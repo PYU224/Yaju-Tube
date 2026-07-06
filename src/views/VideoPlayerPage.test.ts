@@ -1,12 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import axios, { type AxiosResponse } from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { useHistoryStore } from '@/stores/historyStore'
 import { useInstanceStore } from '@/stores/instanceStore'
 import { usePlaylistStore } from '@/stores/playlistStore'
+import { axiosError, createTestRouter, testGlobal } from '@/testUtils'
 import VideoPlayerPage from './VideoPlayerPage.vue'
 
 const peerTubeMocks = vi.hoisted(() => ({
@@ -88,16 +88,6 @@ type VideoResponse = {
   }
 }
 
-type AxiosLikeError = Error & {
-  isAxiosError: true
-  code?: string
-  response?: {
-    status: number
-    statusText: string
-  }
-  request?: object
-}
-
 const videoResponse: VideoResponse = {
   uuid: 'video-1',
   name: 'Playable PeerTube Video',
@@ -134,13 +124,6 @@ function mockVideo(response: VideoResponse = videoResponse) {
   } as AxiosResponse<VideoResponse>)
 }
 
-function axiosError(overrides: Omit<Partial<AxiosLikeError>, 'isAxiosError'> = {}): AxiosLikeError {
-  return Object.assign(new Error('Request failed'), {
-    isAxiosError: true as const,
-    ...overrides,
-  })
-}
-
 async function mountVideoPlayerPage(
   setupStores?: (stores: {
     historyStore: ReturnType<typeof useHistoryStore>
@@ -155,21 +138,15 @@ async function mountVideoPlayerPage(
   const playlistStore = usePlaylistStore()
   setupStores?.({ historyStore, instanceStore, playlistStore })
 
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/tabs/tab2', component: { template: '<div />' } },
-      { path: '/tabs/video/:videoId', component: VideoPlayerPage },
-    ],
-  })
+  const router = createTestRouter([
+    { path: '/tabs/tab2', component: { template: '<div />' } },
+    { path: '/tabs/video/:videoId', component: VideoPlayerPage },
+  ])
   await router.push('/tabs/video/video-1')
   await router.isReady()
 
   const wrapper = mount(VideoPlayerPage, {
-    global: {
-      plugins: [pinia, router, i18n],
-      stubs: ionicStubs,
-    },
+    global: testGlobal(pinia, router, ionicStubs),
   })
   await flushPromises()
 

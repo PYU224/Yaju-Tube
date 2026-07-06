@@ -1,6 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -8,6 +7,7 @@ import { useUploadStore } from '@/stores/uploadStore'
 import type { VideoChannel } from '@/api/peertube'
 import { VIDEO_PRIVACY } from '@/api/peertube'
 import * as peertube from '@/api/peertube'
+import { createTestRouter, testGlobal } from '@/testUtils'
 import UploadPage from './UploadPage.vue'
 
 vi.mock('@/api/peertube', async (importOriginal) => {
@@ -90,21 +90,15 @@ async function mountUploadPage(setup?: (stores: {
   const authStore = useAuthStore()
   setup?.({ authStore })
 
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/tabs/tab6', component: { template: '<div />' } },
-      { path: '/tabs/video/:videoId', component: { template: '<div />' } },
-    ],
-  })
+  const router = createTestRouter([
+    { path: '/tabs/tab6', component: { template: '<div />' } },
+    { path: '/tabs/video/:videoId', component: { template: '<div />' } },
+  ])
   await router.push('/tabs/tab6')
   await router.isReady()
 
   const wrapper = mount(UploadPage, {
-    global: {
-      plugins: [pinia, router, i18n],
-      stubs: ionicStubs,
-    },
+    global: testGlobal(pinia, router, ionicStubs),
   })
   await flushPromises()
 

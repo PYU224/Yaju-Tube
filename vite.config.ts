@@ -11,8 +11,14 @@ const missingVendorSourcemapEntries = [
   '/node_modules/@ionic/vue-router/dist/index.js',
 ] as const
 
+// Rollup/Vite hand module ids using the host OS's path separator; normalize to
+// forward slashes so the path matching below behaves identically on Windows.
+function toPosixPath(id: string): string {
+  return id.replaceAll(path.sep, '/')
+}
+
 export function shouldSuppressMissingVendorSourcemap(id: string): boolean {
-  const normalizedId = id.replaceAll(path.sep, '/')
+  const normalizedId = toPosixPath(id)
 
   return missingVendorSourcemapEntries.some((entry) => normalizedId.endsWith(entry))
 }
@@ -42,7 +48,7 @@ export function suppressMissingVendorSourcemaps(): Plugin {
 }
 
 export function manualChunks(id: string): string | undefined {
-  const normalizedId = id.replaceAll(path.sep, '/')
+  const normalizedId = toPosixPath(id)
   const nodeModulesIndex = normalizedId.lastIndexOf('/node_modules/')
 
   if (nodeModulesIndex === -1) {

@@ -1,13 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import type { AxiosResponse } from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import API from '@/api'
 import i18n from '@/i18n'
 import { useInstanceStore } from '@/stores/instanceStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { Video, VideoListResponse } from '@/types/video'
+import { axiosError, createTestRouter, testGlobal } from '@/testUtils'
 import Tab2Page from './Tab2Page.vue'
 
 vi.mock('@/api', () => ({
@@ -37,16 +37,6 @@ const localVideo: Video = {
     host: '810video.com',
   },
   publishedAt: '2026-05-04T01:00:00.000Z',
-}
-
-type AxiosLikeError = Error & {
-  isAxiosError: true
-  code?: string
-  response?: {
-    status: number
-    statusText: string
-  }
-  request?: object
 }
 
 const ionicStubs = {
@@ -131,33 +121,20 @@ function mockRawVideoListData(data: Partial<VideoListResponse>) {
   } as AxiosResponse<Partial<VideoListResponse>>)
 }
 
-function axiosError(overrides: Omit<Partial<AxiosLikeError>, 'isAxiosError'> = {}): AxiosLikeError {
-  return Object.assign(new Error('Request failed'), {
-    isAxiosError: true as const,
-    ...overrides,
-  })
-}
-
 async function mountTab2Page() {
   const pinia = createPinia()
   setActivePinia(pinia)
   const instanceStore = useInstanceStore()
   const settingsStore = useSettingsStore()
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/tabs/tab2', component: { template: '<div />' } },
-      { path: '/tabs/video/:videoId', component: { template: '<div />' } },
-    ],
-  })
+  const router = createTestRouter([
+    { path: '/tabs/tab2', component: { template: '<div />' } },
+    { path: '/tabs/video/:videoId', component: { template: '<div />' } },
+  ])
   await router.push('/tabs/tab2')
   await router.isReady()
 
   const wrapper = mount(Tab2Page, {
-    global: {
-      plugins: [pinia, router, i18n],
-      stubs: ionicStubs,
-    },
+    global: testGlobal(pinia, router, ionicStubs),
   })
   await flushPromises()
 

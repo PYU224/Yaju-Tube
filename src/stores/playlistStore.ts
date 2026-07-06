@@ -1,12 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { SavedVideoRef } from '@/types/video'
 
-export interface PlaylistItem {
-  videoId: string
-  videoName: string
-  thumbnailPath: string
-  channelName: string
-  instanceUrl: string
+export interface PlaylistItem extends SavedVideoRef {
   addedAt: number
 }
 
@@ -31,21 +27,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function requireString(record: Record<string, unknown>, key: string): string {
-  const value = record[key]
-
-  if (typeof value !== 'string') {
-    throw new Error('Invalid playlist item')
+function requireRecord(value: unknown, message: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(message)
   }
 
   return value
 }
 
-function requireNumber(record: Record<string, unknown>, key: string): number {
+function requireString(record: Record<string, unknown>, key: string, message: string): string {
+  const value = record[key]
+
+  if (typeof value !== 'string') {
+    throw new Error(message)
+  }
+
+  return value
+}
+
+function requireNumber(record: Record<string, unknown>, key: string, message: string): number {
   const value = record[key]
 
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error('Invalid playlist item')
+    throw new Error(message)
   }
 
   return value
@@ -55,10 +59,8 @@ function playlistKey(videoId: string, instanceUrl: string): string {
   return `${instanceUrl}/${videoId}`
 }
 
-function parseSettings(value: unknown): PlaylistExportSettings {
-  if (!isRecord(value)) {
-    throw new Error('Invalid playlist export')
-  }
+function parseSettings(input: unknown): PlaylistExportSettings {
+  const value = requireRecord(input, 'Invalid playlist export')
 
   const displayMode = value['displayMode']
 
@@ -66,60 +68,40 @@ function parseSettings(value: unknown): PlaylistExportSettings {
     throw new Error('Invalid playlist export')
   }
 
-  const itemsPerPage = value['itemsPerPage']
-
-  if (typeof itemsPerPage !== 'number' || !Number.isFinite(itemsPerPage)) {
-    throw new Error('Invalid playlist export')
-  }
-
   return {
-    defaultInstanceUrl: requireExportString(value, 'defaultInstanceUrl'),
+    defaultInstanceUrl: requireString(value, 'defaultInstanceUrl', 'Invalid playlist export'),
     displayMode,
-    itemsPerPage,
-    locale: requireExportString(value, 'locale'),
-    theme: requireExportString(value, 'theme'),
+    itemsPerPage: requireNumber(value, 'itemsPerPage', 'Invalid playlist export'),
+    locale: requireString(value, 'locale', 'Invalid playlist export'),
+    theme: requireString(value, 'theme', 'Invalid playlist export'),
   }
 }
 
-function requireExportString(record: Record<string, unknown>, key: string): string {
-  const value = record[key]
-
-  if (typeof value !== 'string') {
-    throw new Error('Invalid playlist export')
-  }
-
-  return value
-}
-
-function parsePlaylistItem(value: unknown): PlaylistItem {
-  if (!isRecord(value)) {
-    throw new Error('Invalid playlist item')
-  }
+function parsePlaylistItem(input: unknown): PlaylistItem {
+  const value = requireRecord(input, 'Invalid playlist item')
 
   return {
-    videoId: requireString(value, 'videoId'),
-    videoName: requireString(value, 'videoName'),
-    thumbnailPath: requireString(value, 'thumbnailPath'),
-    channelName: requireString(value, 'channelName'),
-    instanceUrl: requireString(value, 'instanceUrl'),
-    addedAt: requireNumber(value, 'addedAt'),
+    videoId: requireString(value, 'videoId', 'Invalid playlist item'),
+    videoName: requireString(value, 'videoName', 'Invalid playlist item'),
+    thumbnailPath: requireString(value, 'thumbnailPath', 'Invalid playlist item'),
+    channelName: requireString(value, 'channelName', 'Invalid playlist item'),
+    instanceUrl: requireString(value, 'instanceUrl', 'Invalid playlist item'),
+    addedAt: requireNumber(value, 'addedAt', 'Invalid playlist item'),
   }
 }
 
 function parsePlaylistExport(payload: unknown): PlaylistExport {
-  let value = payload
+  let parsed = payload
 
   if (typeof payload === 'string') {
     try {
-      value = JSON.parse(payload) as unknown
+      parsed = JSON.parse(payload) as unknown
     } catch {
       throw new Error('Invalid playlist export')
     }
   }
 
-  if (!isRecord(value)) {
-    throw new Error('Invalid playlist export')
-  }
+  const value = requireRecord(parsed, 'Invalid playlist export')
 
   if (value['version'] !== 1) {
     throw new Error('Unsupported playlist export version')
