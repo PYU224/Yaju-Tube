@@ -100,6 +100,17 @@ let player: PeerTubePlayer | null = null;
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const loopRestartThresholdSeconds = 1;
 
+// 🆕 続きから再生の判定に使うしきい値（公式PeerTubeアプリの _shouldResume に準拠）
+// - 動画長がこれ未満なら続きから再生しない（短すぎる動画は毎回先頭でよい）
+const resumeMinDurationSeconds = 30;
+// - 保存位置が「動画長 - この秒数」以降なら、ほぼ見終わっているので先頭から再生する
+const resumeEndThresholdSeconds = 10;
+
+// 🆕 埋め込みプレイヤーを開始する再生位置（秒）。0なら先頭から。
+// 動画読み込み時に履歴から一度だけ算出し、以降は再生中に変化させない
+// （iframeのsrcが変わって動画がリロードされるのを防ぐため）。
+const resumeStartSeconds = ref(0);
+
 // 🆕 進行状況の定期保存用
 let progressInterval: number | null = null;
 
@@ -135,7 +146,16 @@ const pipSupported = computed(() => {
 });
 
 const getEmbedUrl = (uuid: string) => {
-  return `https://${embedInstanceUrl.value}/videos/embed/${uuid}`;
+  const base = `https://${embedInstanceUrl.value}/videos/embed/${uuid}`;
+
+  // 🆕 保存された再生位置がある場合は start パラメータで頭出しする。
+  // PeerTubeの埋め込みは ?start=秒数 でネイティブに開始位置を指定できるため、
+  // 再生開始前は効かない seek() よりも確実に「続きから再生」を実現できる。
+  if (resumeStartSeconds.value > 0) {
+    return `${base}?start=${resumeStartSeconds.value}`;
+  }
+
+  return base;
 };
 
 const getVideoChannelName = () => {
@@ -289,19 +309,60 @@ const startProgressTracking = (activePlayer: PeerTubePlayer) => {
   }, 5000); // 5秒ごとに保存
 };
 
-// 🆕 保存された再生位置から再開
-const resumeFromHistory = async (activePlayer: PeerTubePlayer, videoId: string) => {
+// 🆕 保存された再生位置から「続きから再生」すべきか判定する（公式アプリ準拠）
+const shouldResumeFrom = (savedPosition: number, duration: number): boolean => {
+  if (!Number.isFinite(savedPosition) || !Number.isFinite(duration)) {
+    return false;
+  }
+
+  // 保存位置がない（先頭）なら続きから再生しない
+  if (savedPosition <= 0) {
+    return false;
+  }
+
+  // 短すぎる動画は続きから再生しない
+  if (duration < resumeMinDurationSeconds) {
+    return false;
+  }
+
+  // ほぼ見終わっている（残り resumeEndThresholdSeconds 秒以内）なら先頭から再生する
+  if (savedPosition >= duration - resumeEndThresholdSeconds) {
+    return false;
+  }
+
+  return true;
+};
+
+// 🆕 履歴から続きから再生の開始位置（秒）を算出する。続きから再生しない場合は0。
+const computeResumeStart = (videoId: string, apiDuration?: unknown): number => {
   const historyItem = historyStore.getHistoryItem(videoId);
-  if (historyItem && historyItem.progress && historyItem.duration) {
-    // 90%以上視聴済みの場合は最初から再生
-    const progress = (historyItem.progress / historyItem.duration) * 100;
-    if (progress < 90) {
-      try {
-        await activePlayer.seek(historyItem.progress);
-      } catch (e) {
-        console.warn('Failed to seek to saved position:', e);
-      }
-    }
+  const savedProgress = historyItem?.progress ?? 0;
+
+  // 動画長はAPIの値（常に存在し信頼できる）を優先し、無ければ履歴の値を使う
+  const parsedApiDuration = Number(apiDuration);
+  const duration = Number.isFinite(parsedApiDuration) && parsedApiDuration > 0
+    ? parsedApiDuration
+    : historyItem?.duration ?? 0;
+
+  if (!shouldResumeFrom(savedProgress, duration)) {
+    return 0;
+  }
+
+  return Math.floor(savedProgress);
+};
+
+// 🆕 保存された再生位置から再開する。
+// 開始位置は既に埋め込みURLの start パラメータで指定済みだが、
+// プレイヤーが seek に対応している場合の補強として明示的にも頭出しする。
+const resumeFromHistory = async (activePlayer: PeerTubePlayer) => {
+  if (resumeStartSeconds.value <= 0) {
+    return;
+  }
+
+  try {
+    await activePlayer.seek(resumeStartSeconds.value);
+  } catch (e) {
+    console.warn('Failed to seek to saved position:', e);
   }
 };
 
@@ -335,6 +396,11 @@ async function fetchVideo() {
       { timeout: 10000 }
     );
     
+    // 🆕 iframeを描画する前に続きから再生の開始位置を確定させる。
+    // これにより getEmbedUrl が start パラメータ付きの安定したURLを返し、
+    // 再生中に履歴が更新されてもiframeがリロードされない。
+    resumeStartSeconds.value = computeResumeStart(resp.data.uuid, resp.data.duration);
+
     video.value = resp.data;
 
     const rawDesc = resp.data.description || '';
@@ -378,8 +444,8 @@ async function fetchVideo() {
           return;
         }
 
-        // 🆕 保存された位置から再開
-        await resumeFromHistory(player, video.value.uuid);
+        // 🆕 保存された位置から再開（開始位置は既に resumeStartSeconds に確定済み）
+        await resumeFromHistory(player);
 
         // 🆕 セットアップ中に画面が破棄されていたらトラッキングは開始しない
         if (isUnmounted) {

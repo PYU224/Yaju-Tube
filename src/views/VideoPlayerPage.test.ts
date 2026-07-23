@@ -111,6 +111,7 @@ type VideoResponse = {
   description?: string
   thumbnailPath?: string
   previewPath?: string
+  duration?: number
   channel?: {
     displayName?: string
     name?: string
@@ -259,11 +260,13 @@ describe('VideoPlayerPage', () => {
 
     expect(axios.get).toHaveBeenCalledWith('https://history.example/api/v1/videos/video-1', { timeout: 10000 })
     expect(wrapper.get('h1').text()).toBe('Playable PeerTube Video')
-    expect(wrapper.get('iframe').attributes('src')).toBe('https://history.example/videos/embed/video-1')
+    // 続きから再生: 埋め込みURLの start パラメータで頭出しする（再生開始前でも確実に効く）
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://history.example/videos/embed/video-1?start=30')
     expect(sessionStorage.getItem('tempInstanceUrl')).toBeNull()
     expect(wrapper.html()).toContain('<strong>PeerTube</strong>')
     expect(wrapper.html()).not.toContain('<script>')
     expect(peerTubeMocks.constructor).toHaveBeenCalledWith(wrapper.get('iframe').element)
+    // start パラメータの補強として seek でも頭出しする
     expect(peerTubeMocks.seek).toHaveBeenCalledWith(30)
     expect(historyStore.history[0]).toMatchObject({
       videoId: 'video-1',
@@ -406,6 +409,104 @@ describe('VideoPlayerPage', () => {
       expect.objectContaining({ message: 'seek unavailable' }),
     )
     warn.mockRestore()
+  })
+
+  it('resumes using the API-reported duration even when history has no stored duration', async () => {
+    // 履歴に duration が保存されていなくても、APIの duration を使って続きから再生できる
+    mockVideo({
+      uuid: 'video-1',
+      name: 'Video With API Duration',
+      description: '',
+      channel: { name: 'plain-channel' },
+      duration: 600,
+    })
+
+    const { wrapper } = await mountVideoPlayerPage(({ historyStore }) => {
+      historyStore.history = [
+        {
+          videoId: 'video-1',
+          videoName: 'Earlier Title',
+          thumbnailPath: '/old-thumbnail.jpg',
+          channelName: 'Earlier Channel',
+          instanceUrl: '810video.com',
+          watchedAt: Date.now() - 60_000,
+          progress: 150,
+          // duration は意図的に未設定
+        },
+      ]
+    })
+
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?start=150')
+    expect(peerTubeMocks.seek).toHaveBeenCalledWith(150)
+  })
+
+  it('floors a fractional saved position when resuming', async () => {
+    mockVideo({
+      uuid: 'video-1',
+      name: 'Fractional Position Video',
+      description: '',
+      channel: { name: 'plain-channel' },
+      duration: 300,
+    })
+
+    const { wrapper } = await mountVideoPlayerPage(({ historyStore }) => {
+      historyStore.history = [
+        {
+          videoId: 'video-1',
+          videoName: 'Earlier Title',
+          thumbnailPath: '/old-thumbnail.jpg',
+          channelName: 'Earlier Channel',
+          instanceUrl: '810video.com',
+          watchedAt: Date.now() - 60_000,
+          progress: 47.8,
+          duration: 300,
+        },
+      ]
+    })
+
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?start=47')
+    expect(peerTubeMocks.seek).toHaveBeenCalledWith(47)
+  })
+
+  it('does not resume when the saved position is within the last 10 seconds', async () => {
+    // ほぼ見終わっている場合は先頭から再生する（start パラメータも seek もしない）
+    const { wrapper } = await mountVideoPlayerPage(({ historyStore }) => {
+      historyStore.history = [
+        {
+          videoId: 'video-1',
+          videoName: 'Almost Finished',
+          thumbnailPath: '/old-thumbnail.jpg',
+          channelName: 'Earlier Channel',
+          instanceUrl: '810video.com',
+          watchedAt: Date.now() - 60_000,
+          progress: 115,
+          duration: 120,
+        },
+      ]
+    })
+
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1')
+    expect(peerTubeMocks.seek).not.toHaveBeenCalled()
+  })
+
+  it('does not resume for short videos under 30 seconds', async () => {
+    const { wrapper } = await mountVideoPlayerPage(({ historyStore }) => {
+      historyStore.history = [
+        {
+          videoId: 'video-1',
+          videoName: 'Short Clip',
+          thumbnailPath: '/old-thumbnail.jpg',
+          channelName: 'Earlier Channel',
+          instanceUrl: '810video.com',
+          watchedAt: Date.now() - 60_000,
+          progress: 10,
+          duration: 25,
+        },
+      ]
+    })
+
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1')
+    expect(peerTubeMocks.seek).not.toHaveBeenCalled()
   })
 
   it('toggles loop playback and restarts the player near the end of the video', async () => {
