@@ -148,14 +148,22 @@ const pipSupported = computed(() => {
 const getEmbedUrl = (uuid: string) => {
   const base = `https://${embedInstanceUrl.value}/videos/embed/${uuid}`;
 
+  // 🆕 埋め込みプレイヤーのJavaScript APIを有効化する（api=1）。
+  // PeerTubeの埋め込みはデフォルトでAPIが無効で、api=1 を付けない限り
+  // jschannel経由の seek / getCurrentTime / play / pause や、再生位置を通知する
+  // playbackStatusUpdate イベントが一切動作しない（公式ドキュメント・embed実装で
+  // enableApi は既定 false）。これが無かったため再生位置の保存も
+  // 「続きから再生」も実際には機能していなかった。
+  const params = new URLSearchParams({ api: '1' });
+
   // 🆕 保存された再生位置がある場合は start パラメータで頭出しする。
-  // PeerTubeの埋め込みは ?start=秒数 でネイティブに開始位置を指定できるため、
+  // PeerTubeの埋め込みは start=秒数 でネイティブに開始位置を指定できるため、
   // 再生開始前は効かない seek() よりも確実に「続きから再生」を実現できる。
   if (resumeStartSeconds.value > 0) {
-    return `${base}?start=${resumeStartSeconds.value}`;
+    params.set('start', String(resumeStartSeconds.value));
   }
 
-  return base;
+  return `${base}?${params.toString()}`;
 };
 
 const getVideoChannelName = () => {

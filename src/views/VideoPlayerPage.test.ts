@@ -260,8 +260,9 @@ describe('VideoPlayerPage', () => {
 
     expect(axios.get).toHaveBeenCalledWith('https://history.example/api/v1/videos/video-1', { timeout: 10000 })
     expect(wrapper.get('h1').text()).toBe('Playable PeerTube Video')
-    // 続きから再生: 埋め込みURLの start パラメータで頭出しする（再生開始前でも確実に効く）
-    expect(wrapper.get('iframe').attributes('src')).toBe('https://history.example/videos/embed/video-1?start=30')
+    // 続きから再生: 埋め込みURLの start パラメータで頭出しする（再生開始前でも確実に効く）。
+    // api=1 で埋め込みJavaScript APIを有効化しないと seek も再生位置保存も動かない
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://history.example/videos/embed/video-1?api=1&start=30')
     expect(sessionStorage.getItem('tempInstanceUrl')).toBeNull()
     expect(wrapper.html()).toContain('<strong>PeerTube</strong>')
     expect(wrapper.html()).not.toContain('<script>')
@@ -436,7 +437,7 @@ describe('VideoPlayerPage', () => {
       ]
     })
 
-    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?start=150')
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?api=1&start=150')
     expect(peerTubeMocks.seek).toHaveBeenCalledWith(150)
   })
 
@@ -464,7 +465,7 @@ describe('VideoPlayerPage', () => {
       ]
     })
 
-    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?start=47')
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?api=1&start=47')
     expect(peerTubeMocks.seek).toHaveBeenCalledWith(47)
   })
 
@@ -485,7 +486,8 @@ describe('VideoPlayerPage', () => {
       ]
     })
 
-    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1')
+    // 続きから再生しない場合でも api=1 は常に付与する（再生位置保存に必須のため）
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?api=1')
     expect(peerTubeMocks.seek).not.toHaveBeenCalled()
   })
 
@@ -505,8 +507,20 @@ describe('VideoPlayerPage', () => {
       ]
     })
 
-    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1')
+    // 続きから再生しない場合でも api=1 は常に付与する（再生位置保存に必須のため）
+    expect(wrapper.get('iframe').attributes('src')).toBe('https://810video.com/videos/embed/video-1?api=1')
     expect(peerTubeMocks.seek).not.toHaveBeenCalled()
+  })
+
+  it('always enables the embed JavaScript API so playback position can be saved and sought', async () => {
+    // 視聴履歴が全く無くても api=1 を付与する。これが無いとPeerTubeの埋め込みは
+    // playbackStatusUpdate を送らず、seek / getCurrentTime も応答しないため、
+    // 再生位置の保存も「続きから再生」も成立しない（公式ドキュメント準拠）。
+    const { wrapper } = await mountVideoPlayerPage()
+
+    const src = wrapper.get('iframe').attributes('src')
+    expect(src).toBe('https://810video.com/videos/embed/video-1?api=1')
+    expect(new URL(src as string).searchParams.get('api')).toBe('1')
   })
 
   it('toggles loop playback and restarts the player near the end of the video', async () => {
