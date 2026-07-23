@@ -63,10 +63,12 @@
 </template>
 
 <script setup lang="ts">
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonBackButton, IonButton, IonIcon } from '@ionic/vue';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonBackButton, IonButton, IonIcon, onIonViewDidEnter, onIonViewWillLeave } from '@ionic/vue';
 import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
+import { App } from '@capacitor/app';
+import type { PluginListenerHandle } from '@capacitor/core';
 import { useInstanceStore } from '@/stores/instanceStore';
 import { useHistoryStore } from '@/stores/historyStore'; // 🆕 履歴ストア追加
 import { usePlaylistStore } from '@/stores/playlistStore';
@@ -95,6 +97,21 @@ const loopRestartThresholdSeconds = 1;
 
 // 🆕 進行状況の定期保存用
 let progressInterval: number | null = null;
+
+// 🆕 アプリのフォアグラウンド/バックグラウンド遷移リスナー
+let appStateListener: PluginListenerHandle | null = null;
+
+// 🆕 このビューが前面に表示されているか（Ionicのキャッシュで背面に残っている間はfalse）
+let isViewActive = true;
+
+// 🆕 アプリ自体がフォアグラウンドにあるか
+let isAppActive = true;
+
+// 🆕 アンマウント後に完了する非同期処理を無効化するためのフラグ
+let isUnmounted = false;
+
+// 🆕 停止後に完了した実行中ポーリングを無効化するための世代カウンタ
+let progressTrackingGeneration = 0;
 
 const descHtml = ref<string>('');
 const errorMessage = ref<string>('');
@@ -166,16 +183,89 @@ const addToHistory = () => {
   });
 };
 
+// 🆕 進行状況トラッキングを停止
+const stopProgressTracking = () => {
+  // 実行中の古いポーリングコールバックも世代カウンタで無効化する
+  progressTrackingGeneration += 1;
+
+  if (progressInterval !== null) {
+    clearInterval(progressInterval);
+    progressInterval = null;
+  }
+};
+
+// 🆕 現在の再生位置を即座に履歴へ保存（バックグラウンド移行時・画面離脱時用）
+const saveCurrentProgress = async () => {
+  if (!player || !video.value) {
+    return;
+  }
+
+  const generation = progressTrackingGeneration;
+
+  try {
+    const currentTime = await player.getCurrentTime();
+    const duration = await player.getDuration();
+
+    // 待機中に新しいトラッキングが始まっていたら、古い値で履歴を上書きしない
+    if (generation !== progressTrackingGeneration) {
+      return;
+    }
+
+    if (currentTime > 0 && duration > 0) {
+      historyStore.updateProgress(video.value.uuid, currentTime, duration);
+    }
+  } catch (e) {
+    // 離脱中はプレイヤーが応答しないことがあるため失敗は無視
+    console.debug('Saving progress failed:', e);
+  }
+};
+
+// 🆕 画面が背面に回ったら再生を停止し、再生位置を保存する
+const suspendPlayback = async () => {
+  stopProgressTracking();
+
+  if (player) {
+    // 音声を即座に止めるため停止要求を先に送る（応答は待たない）
+    void player.pause().catch((e) => {
+      console.debug('Pausing playback failed:', e);
+    });
+  }
+
+  await saveCurrentProgress();
+};
+
+// 🆕 画面へ戻ってきたら進行状況トラッキングを再開する（再生自体は自動再開しない）
+// このページが前面にあり、かつアプリがフォアグラウンドの時だけ開始する
+const resumeProgressTracking = () => {
+  if (player && isViewActive && isAppActive) {
+    startProgressTracking(player);
+  }
+};
+
 // 🆕 再生位置を定期的に保存
 const startProgressTracking = (activePlayer: PeerTubePlayer) => {
+  stopProgressTracking(); // 二重起動を防止
+  const generation = progressTrackingGeneration;
+
   progressInterval = window.setInterval(async () => {
     try {
-      const currentTime = await activePlayer.getCurrentPosition();
+      const currentTime = await activePlayer.getCurrentTime();
       const duration = await activePlayer.getDuration();
-      
+
+      // 待機中に停止された古いポーリングは何もしない
+      // （suspend後にループ再生分岐でseek/playが走るのを防ぐ）
+      if (generation !== progressTrackingGeneration) {
+        return;
+      }
+
       if (video.value && currentTime > 0 && duration > 0) {
         if (loopPlayback.value && currentTime >= duration - loopRestartThresholdSeconds) {
           await activePlayer.seek(0);
+
+          if (generation !== progressTrackingGeneration) {
+            return;
+          }
+
           await activePlayer.play();
           historyStore.updateProgress(video.value.uuid, 0, duration);
           return;
@@ -277,13 +367,25 @@ async function fetchVideo() {
           console.warn('Player ready timeout, continuing anyway:', timeoutError);
           // タイムアウトしても処理を続行
         }
-        
+
+        // 🆕 プレイヤー準備待ちの間に画面が破棄されていたら何もしない
+        if (isUnmounted) {
+          return;
+        }
+
         // 🆕 保存された位置から再開
         await resumeFromHistory(player, video.value.uuid);
-        
+
+        // 🆕 セットアップ中に画面が破棄されていたらトラッキングは開始しない
+        if (isUnmounted) {
+          return;
+        }
+
         // 🆕 進行状況のトラッキング開始
-        startProgressTracking(player);
-        
+        // （ページが背面・アプリがバックグラウンドの間は開始せず、
+        //   ionViewDidEnterやappStateChangeの復帰時に再開される）
+        resumeProgressTracking();
+
         if (pipSupported.value) {
           setupPiPListeners();
         }
@@ -314,22 +416,63 @@ async function fetchVideo() {
   }
 }
 
+// 🆕 解除できるように名前付きハンドラで登録する
+const handleEnterPiP = () => {
+  console.log('Entered PiP mode');
+};
+
+const handleLeavePiP = () => {
+  console.log('Left PiP mode');
+};
+
 const setupPiPListeners = () => {
   if (Capacitor.getPlatform() === 'web') {
-    document.addEventListener('enterpictureinpicture', () => {
-      console.log('Entered PiP mode');
-    });
-    
-    document.addEventListener('leavepictureinpicture', () => {
-      console.log('Left PiP mode');
-    });
+    document.addEventListener('enterpictureinpicture', handleEnterPiP);
+    document.addEventListener('leavepictureinpicture', handleLeavePiP);
   }
 };
+
+// 🆕 別画面へ遷移してもIonicはこのページをキャッシュしたまま残すため、
+// 背面に回るタイミングで再生を停止して位置を保存する
+onIonViewWillLeave(() => {
+  isViewActive = false;
+  void suspendPlayback();
+});
+
+// 🆕 背面から画面へ戻ってきたら進行状況トラッキングを再開する
+onIonViewDidEnter(() => {
+  isViewActive = true;
+  resumeProgressTracking();
+});
 
 onMounted(async () => {
   try {
     document.addEventListener('fullscreenchange', onFullScreenChange);
     document.addEventListener('webkitfullscreenchange', onFullScreenChange);
+
+    // 🆕 アプリ自体がバックグラウンドへ移行したら再生を停止し、復帰したらトラッキングを再開する
+    appStateListener = await App.addListener('appStateChange', ({ isActive }) => {
+      isAppActive = isActive;
+
+      if (isActive) {
+        // 背面キャッシュ中のページで隠れ再生・トラッキングが始まらないよう
+        // resumeProgressTracking側で前面判定してから再開する
+        resumeProgressTracking();
+      } else if (isViewActive) {
+        // 背面キャッシュ中のページは離脱時に既に停止・保存済みのため対象外
+        // （watchedAtが更新され、見ていない動画が履歴の先頭に浮上するのを防ぐ）
+        void suspendPlayback();
+      }
+    });
+
+    // 🆕 リスナー登録完了より先にアンマウントされていたら、即座に解除して以降の処理は行わない
+    if (isUnmounted) {
+      void appStateListener.remove().catch(() => {
+        // リスナー解除失敗は無視
+      });
+      appStateListener = null;
+      return;
+    }
 
     if (Capacitor.getPlatform() !== 'web') {
       try {
@@ -346,19 +489,29 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(async () => {
-  // 🆕 進行状況トラッキング停止
-  if (progressInterval) {
-    clearInterval(progressInterval);
-  }
-  
+  // 🆕 進行中の非同期セットアップ（リスナー登録など）を無効化
+  isUnmounted = true;
+
+  // 🆕 進行状況トラッキングを停止し、最後の再生位置を保存（ベストエフォート）
+  stopProgressTracking();
+  void saveCurrentProgress();
+
   document.removeEventListener('fullscreenchange', onFullScreenChange);
   document.removeEventListener('webkitfullscreenchange', onFullScreenChange);
-  
+
   if (Capacitor.getPlatform() === 'web') {
-    document.removeEventListener('enterpictureinpicture', () => {});
-    document.removeEventListener('leavepictureinpicture', () => {});
+    document.removeEventListener('enterpictureinpicture', handleEnterPiP);
+    document.removeEventListener('leavepictureinpicture', handleLeavePiP);
   }
-  
+
+  // 🆕 アプリ状態リスナーを解除
+  if (appStateListener) {
+    void appStateListener.remove().catch(() => {
+      // リスナー解除失敗は無視
+    });
+    appStateListener = null;
+  }
+
   try {
     await ScreenOrientation.unlock();
   } catch {
