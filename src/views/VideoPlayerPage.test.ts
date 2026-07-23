@@ -577,6 +577,45 @@ describe('VideoPlayerPage', () => {
     wrapper.unmount()
   })
 
+  it('stops playback and saves the position when leaving via router navigation (bottom tab bar), even without the Ionic view hook', async () => {
+    // 回帰テスト: 下部タブバーでの遷移では Ionic がページをキャッシュしたまま残し
+    // onIonViewWillLeave が発火しないことがある。その場合でも iframe の音声が
+    // 裏で流れ続けないよう、Vue Router のパス変化だけで停止・保存されること。
+    vi.useFakeTimers()
+
+    const { historyStore, router, wrapper } = await mountVideoPlayerPage()
+
+    peerTubeMocks.pause.mockClear()
+    peerTubeMocks.getCurrentTime.mockResolvedValue(88)
+
+    // Ionic のライフサイクルフックは意図的に呼ばず、実際のルート遷移のみ発生させる
+    await router.push('/tabs/tab2')
+    await flushPromises()
+
+    expect(peerTubeMocks.pause).toHaveBeenCalled()
+    expect(historyStore.getHistoryItem('video-1')).toMatchObject({
+      progress: 88,
+      duration: 120,
+    })
+
+    // 離脱後は進行状況トラッキングが停止していること
+    peerTubeMocks.getCurrentTime.mockClear()
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+
+    expect(peerTubeMocks.getCurrentTime).not.toHaveBeenCalled()
+
+    // 動画ページへ戻るとトラッキングが再開すること（再生自体は自動再開しない）
+    await router.push('/tabs/video/video-1')
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+
+    expect(peerTubeMocks.getCurrentTime).toHaveBeenCalled()
+    expect(peerTubeMocks.play).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
   it('pauses playback and saves the position when the app goes to the background, then resumes tracking', async () => {
     vi.useFakeTimers()
 

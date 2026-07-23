@@ -64,7 +64,7 @@
 
 <script setup lang="ts">
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonBackButton, IonButton, IonIcon, onIonViewDidEnter, onIonViewWillLeave } from '@ionic/vue';
-import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { App } from '@capacitor/app';
@@ -86,6 +86,11 @@ const instanceStore = useInstanceStore();
 const historyStore = useHistoryStore(); // 🆕 履歴ストア
 const playlistStore = usePlaylistStore();
 const { t } = useI18n();
+
+// 🆕 このページのルートパス。下部タブバー等での画面遷移を確実に検知するため、
+// マウント時のvideoIdを固定で保持する（離脱後はroute.paramsが変化するため）
+const routeVideoId = String(route.params['videoId'] ?? '');
+const videoRoutePath = `/tabs/video/${routeVideoId}`;
 
 const video = ref<any>(null);
 const isPlaying = ref(false);
@@ -444,6 +449,32 @@ onIonViewDidEnter(() => {
   isViewActive = true;
   resumeProgressTracking();
 });
+
+// 🆕 下部タブバーなどでの画面遷移対策。
+// このページは /tabs 配下でタブと同じrouter-outletにpushされるため、
+// タブボタンで別タブへ切り替えるとIonicはページをキャッシュしたまま
+// 残す一方でonIonViewWillLeaveが発火しないことがある。その結果、
+// iframeの音声が停止されず裏で流れ続け、しかも画面から離れているため
+// 操作もできない状態になっていた。
+// Ionicのビューライフサイクルに依存せず、Vue Routerのパス変化を直接
+// 監視することで、あらゆる離脱・復帰を確実に捕捉する。
+watch(
+  () => route.path,
+  (newPath, oldPath) => {
+    const nowOnVideoPage = newPath === videoRoutePath;
+    const wasOnVideoPage = oldPath === videoRoutePath;
+
+    if (wasOnVideoPage && !nowOnVideoPage) {
+      // 動画ページから離脱：再生を停止して再生位置を保存する
+      isViewActive = false;
+      void suspendPlayback();
+    } else if (!wasOnVideoPage && nowOnVideoPage) {
+      // 動画ページへ復帰：進行状況トラッキングを再開（再生は自動再開しない）
+      isViewActive = true;
+      resumeProgressTracking();
+    }
+  },
+);
 
 onMounted(async () => {
   try {
