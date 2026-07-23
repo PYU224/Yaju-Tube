@@ -56,7 +56,7 @@
   "overrides": {
     "@cypress/request": "^4.0.0",
     "glob": "^13.0.6",
-    "brace-expansion@5": "5.0.6"
+    "brace-expansion@5": "5.0.7"
   },
   "description": "An Ionic project"
 }
