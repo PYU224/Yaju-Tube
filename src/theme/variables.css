@@ -179,3 +179,41 @@ ion-modal {
     max-width: 100%;
   }
 }
+
+#app-tab-bar ion-tab-button {
+  min-width: 0;
+  --padding-start: 4px;
+  --padding-end: 4px;
+}
+
+#app-tab-bar ion-tab-button ion-label {
+  font-size: 12px;
+}
+
+@media (max-width: 479px) {
+  #app-tab-bar ion-tab-button {
+    --padding-start: 2px;
+    --padding-end: 2px;
+  }
+
+  #app-tab-bar ion-tab-button ion-label {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 399px) {
+  #app-tab-bar ion-tab-button ion-label {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 359px) {
+  #app-tab-bar ion-tab-button {
+    --padding-start: 1px;
+    --padding-end: 1px;
+  }
+
+  #app-tab-bar ion-tab-button ion-label {
+    font-size: 9px;
+  }
+}
